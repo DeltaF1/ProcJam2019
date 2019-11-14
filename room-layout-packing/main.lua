@@ -1,10 +1,11 @@
 local Vector = require "vector"
-local md5 = require "md5"
+local Geometry = require "geometry"
+
 function love.load(arg)
   if arg[#arg] == "-debug" then require("mobdebug").start() end
   
   
-  generate(tonumber(md5.sumhexa("foobar4"):sub(1,16),16))
+  love.keypressed()
 end
 
 function index2xy(index, width)
@@ -19,18 +20,21 @@ function xy2index(x, y, width)
   return x + width*(y-1)
 end
 
+ROOM_PRESELECTED_OFFSET = 3
 room_types = {
   -- Special rooms that aren't chosen by the room generator
   {name = "Helm",               wrange={2,2}, hrange={2,2}, colour = {0.8,0.9,0.1,0.85}},
-  -----------------------------
   {name = "Engine",             wrange={2,2}, hrange={2,3}, colour={0.58330589736158589, 0.024793900080875231, 0.83640388831262813,0.85}},
+  -----------------------------  ROOM_PRESELECTED_OFFSET
   {name = "Storage Bay",        wrange={3,6}, hrange={3,6}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504,0.85}},
   {name = "Mess Hall",          wrange = {2,3}, hrange={2,3}, colour = {0.3540978676870179, 0.47236376329459961, 0.67900487187065317,0.85}},
   {name = "Sleeping quarters",  wrange = {1,2}, hrange={1,2}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407,0.85}},
   {name = "Lounge",             wrange = {2,3}, hrange={2,3}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767,0.85}},
-  {name = "Corridor",         wrange={3,10}, hrange={1,2}, colour = {0.2,0.2,0.2,0.85}},
-  {name = "Corridor",         wrange={1,2}, hrange={3,10}, colour = {0.2,0.2,0.2,0.85}},
+  {name = "Corridor",         wrange={2,10}, hrange={1,2}, colour = {0.3,0.3,0.3,0.85}},
+  {name = "Corridor",         wrange={1,2}, hrange={2,10}, colour = {0.3,0.3,0.3,0.85}},
 }
+
+
 
 local maxw,maxh = 0,0
 for i = 1,#room_types do
@@ -78,31 +82,50 @@ function generate(seed)
     { {size=Vector(3,6)}, {size=Vector(4,5)}, {size=Vector(3,8)} }
   }]]--
   
+  -- THE GRID
+  --
+  -- A DIGITAL FRONTIER
   grid = {}
-  doors = {}
+  
   seed = seed or os.time()
   
   local random = love.math.newRandomGenerator(seed)
   
-  local width,height = random:random(1, 4), random:random(1, 4)
+  local width,height = random:random(1, 4), random:random(2, 4)
   
   function gen_room(type)
     local template = room_types[type]
-    local room = {size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))}
+    local room = {}
+    
+    local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
+    room.size = size
     room.colour = template.colour
     room.name = template.name
-    
+    local geometry = {}
+    for i = 1, size.x do
+      geometry[i] = {}
+      for j = 1, size.y do
+        geometry[i][j] = type
+      end
+    end
+    room.geometry = Geometry(geometry)
+    room.doors = {}
     return room
   end
   
   rooms = {}
   
-  local helm_index = random:random(width*height)
-  rooms[helm_index] = gen_room(1)
-
+  for i = 1, ROOM_PRESELECTED_OFFSET-1 do
+    local index
+    repeat
+      index = random:random(width*height)
+    until rooms[index] == nil
+    rooms[index] = gen_room(i)
+  end
+  
   for i = 1,width*height do
     if not rooms[i] then
-      rooms[i] = gen_room(random:random(2,#room_types))
+      rooms[i] = gen_room(random:random(ROOM_PRESELECTED_OFFSET,#room_types))
     end
   end
   
@@ -144,35 +167,106 @@ function generate(seed)
     merge(grid[y],grid[y+1],"y")
   end
   
+  adjmatrix = {}
+  to_merge = {}
+  
   -- Door generation
   -- This should segue into 
   for i = 1,#rooms do
-    for j = 1,#rooms do
-      if i ~= j and rooms[i].name ~= rooms[j].name then
+    if not adjmatrix[i] then
+      adjmatrix[i] = {}
+    end
+    for j = i+1,#rooms do
+      -- Don't check already checked rooms
+      if not adjmatrix[j] or not adjmatrix[j][i] then
         local vec1, vec2 = adjacency(rooms[i], rooms[j])
         if vec1 then
-          local door = {}
-          if vec1.x == vec2.x then
-            door.vec1 = Vector(vec1.x, random:random(vec1.y, vec2.y-1))
-            door.vec2 = door.vec1 + Vector(0,1)
-          elseif vec1.y == vec2.y then
-            door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
-            door.vec2 = door.vec1 + Vector(1,0)
+          -- If two rooms are touching and are the same room type then merge them
+          if rooms[i].name == rooms[j].name then
+            if random:random(1,2) == 1 then
+              to_merge[#to_merge+1]={i,j}
+            else
+              to_merge[#to_merge+1]={j,i}
+            end
+          else
+            local door = {}
+            if vec1.x == vec2.x then
+              door.vec1 = Vector(vec1.x, random:random(vec1.y, vec2.y-1))
+              door.vec2 = door.vec1 + Vector(0,1)
+            elseif vec1.y == vec2.y then
+              door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
+              door.vec2 = door.vec1 + Vector(1,0)
+            end
+            rooms[i].doors[j] = door
+            adjmatrix[i][j] = door
           end
-          doors[#doors+1] = door
         end
       end
     end
+  end
+  
+  function sparse_merge(arr1, arr2, length)
+    local arr = {}
+    for i = 1,length do
+      arr[i] = arr1[i] or arr2[i]
+    end
+    return arr
+  end
+
+  -- FIXME: For debugging
+  rects = {}
+  
+  for i = 1, #rooms do
+    rects[#rects+1] = {rooms[i].pos:clone(), rooms[i].size:clone()}
+  end
+  
+  -- NOW LEAVING THE GRID
+    
+  for _, merge_pair in ipairs(to_merge) do
+    local i,j = unpack(merge_pair)
+    
+    local room1, room2 = rooms[i], rooms[j]
+    
+    assert(room1 and room2)
+    
+    room1.doors = sparse_merge(room1.doors, room2.doors, #rooms)
+    
+    room1.geometry:add(room2.geometry, room2.pos - room1.pos)
+    
+    room1.pos = Vector(math.min(room1.pos.x, room2.pos.x), math.min(room1.pos.y, room2.pos.y))
+    
+    for _, pair in ipairs(to_merge) do
+      if pair[1] > j then pair[1] = pair[1] - 1 end
+      if pair[2] > j then pair[2] = pair[2] - 1 end
+    end
+    
+    table.remove(rooms, j)
+  end
+  
+  doors = {}
+  for _,room in ipairs(rooms) do
+    for i = 1,#rooms do
+      local door = room.doors[i]
+      doors[#doors+1] = door
+    end
+  end
+  
+  for i = 1, #rooms do
+    local row = adjmatrix[i]
+    local s = ""
+    for j = 1, #rooms do
+      if row[j] then a = "1" else a = "0" end
+      s = s..a.." "
+    end
+    print(s)
   end
 end
 
 local seed = 1573187624
 function love.keypressed()
-  seed = seed + 1
   generate(seed)
+  seed = seed + 1
 end
-
-SCALE_FACTOR = 10
 
 -- From https://stackoverflow.com/a/16691908
 function overlap(start1,end1,start2,end2)
@@ -244,7 +338,12 @@ function compress(arr, dir)
   end
 end
 
+SCALE_FACTOR = 10
 
+love.graphics.setFont(love.graphics.newFont("monos.ttf", 16))
+local font = love.graphics.getFont()
+
+local font_scale = Vector(font:getWidth("a"), font:getHeight("a"))
 
 function love.draw()
   
@@ -254,7 +353,7 @@ function love.draw()
     love.graphics.setColor(template.colour)
     
     love.graphics.rectangle("fill", 5, i*20, 10, 5)
-    love.graphics.print(" - "..template.name, 15, i*20 - 5)
+    love.graphics.print(tostring(i).." - "..template.name, 15, i*20 - 5)
   end
   
   love.graphics.push()
@@ -262,33 +361,35 @@ function love.draw()
   local tl,br
   
   for i = 1,#rooms do
-    local current = rooms[i].pos
-    if tl then
-      if current.x < tl.x then
-        tl.x = current.x
+    if rooms[i] then
+      local current = rooms[i].pos
+      if tl then
+        if current.x < tl.x then
+          tl.x = current.x
+        end
+        if current.y < tl.y then
+          tl.y = current.y
+        end
+      else
+        tl = current:clone()
       end
-      if current.y < tl.y then
-        tl.y = current.y
+      if br then
+        if current.x + rooms[i].size.x > br.x then
+          br.x = current.x + rooms[i].size.x 
+        end
+        
+        if current.y + rooms[i].size.y > br.y then
+          br.y = current.y + rooms[i].size.y
+        end
+      else
+        br = current + rooms[i].size
       end
-    else
-      tl = current:clone()
-    end
-    if br then
-      if current.x + rooms[i].size.x > br.x then
-        br.x = current.x + rooms[i].size.x 
-      end
-      
-      if current.y + rooms[i].size.y > br.y then
-        br.y = current.y + rooms[i].size.y
-      end
-    else
-      br = current + rooms[i].size
     end
   end
   
   local center = tl + (br-tl)/2
   
-  center = center * SCALE_FACTOR
+  center = center:permul(font_scale)
   center = Vector(225,150) - center
   
   love.graphics.translate(center.x, center.y)
@@ -296,18 +397,46 @@ function love.draw()
 --  love.graphics.setPointSize(5)
 --  love.graphics.points(center.x, center.y)
   
+--    love.graphics.setColor(0,0.6,0.6)
+--    for i = 1, #rects do
+--      local room = rects[i]
+--      love.graphics.rectangle("fill", room[1].x*font_scale.x, room[1].y*font_scale.y, room[2].x*font_scale.x, room[2].y*font_scale.y)
+--    end
+  
   for i = 1,#rooms do
     local room = rooms[i]
-    love.graphics.setColor(room.colour)
-    love.graphics.rectangle("fill", room.pos.x*SCALE_FACTOR, room.pos.y*SCALE_FACTOR, room.size.x*SCALE_FACTOR, room.size.y*SCALE_FACTOR)
+    if room then
+      love.graphics.setColor(room.colour)
+      local size = room.geometry:size()
+      local text = ""
+      for y = 1, size.y do
+        local line = ""
+        for x = 1, size.x do
+          line = line..(room.geometry:get(x,y) and "@" or " ")
+        end
+        text = text..line.."\n"
+      end
+      love.graphics.printf(text, room.pos.x*font_scale.x, room.pos.y*font_scale.y, (size.x)*font_scale.x*2)
+      love.graphics.setColor(1,1,1)
+--      love.graphics.rectangle("line", room.pos.x*font_scale.x, room.pos.y*font_scale.y, room.geometry:size().x*font_scale.x, room.geometry:size().y*font_scale.y)
+    end
   end
 
+
+
   love.graphics.setColor(1,1,1)
-  for i = 1, #doors do
-    local door = doors[i]
-    love.graphics.line(door.vec1.x*SCALE_FACTOR,door.vec1.y*SCALE_FACTOR,door.vec2.x*SCALE_FACTOR,door.vec2.y*SCALE_FACTOR)
+  for _,door in ipairs(doors) do
+    love.graphics.line(door.vec1.x*font_scale.x,door.vec1.y*font_scale.y,door.vec2.x*font_scale.x,door.vec2.y*font_scale.y)    
   end
+--  for i = 1, #rooms do
+--    for j = 1, #rooms do
+--      local door = adjmatrix[i][j]
+--      if door then
+--        love.graphics.line(door.vec1.x*font_scale.x,door.vec1.y*font_scale.y,door.vec2.x*font_scale.x,door.vec2.y*font_scale.y)
+--      end
+--    end
+--  end
   love.graphics.pop()
   
-  love.graphics.print("seed = "..tostring(seed), 10, 300)
+  love.graphics.print("seed = "..tostring(seed), 10, font_scale.y*30)
 end

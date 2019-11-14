@@ -206,6 +206,13 @@ function vector:trimmed(maxLen)
 end
 
 
+-- Changes by Aldous Rice-Leech
+
+function vector:max(v)
+  assert(isvector(v))
+  return new(math.max(self.x, v.x), math.max(self.y, v.y))
+end
+
 -- the module
 return setmetatable({
 	new             = new,
