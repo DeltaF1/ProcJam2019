@@ -32,19 +32,31 @@ function GeometryView:add(geometry, offset)
   end
 end
 
+local function _get(geometry, pos)
+  if getmetatable(geometry) == GeometryView then
+    return geometry:get(pos)
+  else
+    return (geometry[pos.x] or {})[pos.y]
+  end
+end
+
+local function _size(geometry)
+  if getmetatable(geometry) == GeometryView then
+    return geometry:size()
+  else
+    return Vector(#geometry, #geometry[1])
+  end
+end
+
 function GeometryView:get(x,y)
   if not Vector.isvector(x) then x = Vector(x,y) end
   local pos = x
   local value = nil
   for _, entry in ipairs(self.geometries) do
     local offset, geometry = unpack(entry)
-    if pos >= offset then
-      if getmetatable(geometry) == GeometryView then
-        value = value or geometry:get(pos - offset)
-      else
-        local off = pos - offset 
-        value = value or (geometry[off.x] or {})[off.y]
-      end
+    if pos >= offset and pos <= offset + _size(geometry) then
+      local off = pos - offset 
+      value = value or _get(geometry, off)
     end
     if value then break end
   end
@@ -56,12 +68,7 @@ function GeometryView:size()
   local size = Vector()
   
   for _, entry in ipairs(self.geometries) do
-    local val
-    if getmetatable(entry[2]) == GeometryView then
-      val = entry[1]+entry[2]:size()
-    else
-      val = entry[1]+Vector(#entry[2], #entry[2][1])
-    end
+    local val = entry[1]+_size(entry[2])
     size = size:max(val)
   end
   return size
