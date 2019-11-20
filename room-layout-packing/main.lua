@@ -1,11 +1,40 @@
 local Vector = require "vector"
 local Geometry = require "geometry"
+local TileSet = require "tileset"
 
 function love.load(arg)
   if arg[#arg] == "-debug" then require("mobdebug").start() end
+  love.graphics.setDefaultFilter("nearest", "nearest")
+  love.window.setMode(1024,1024)
+  hullTileset = love.graphics.newImage("tileset.png")
+  gridTileset = love.graphics.newImage("room_tileset.png")
+  TILE_WIDTH=16
+  local tilesetwidth,tilesetheight = hullTileset:getDimensions()
+  tileset = TileSet(tilesetwidth, tilesetheight, TILE_WIDTH)
+  greebleTilesetImage = love.graphics.newImage("greebles.png")
   
+  greebleQuads = {
+    love.graphics.newQuad(0,0,16,32,greebleTilesetImage:getDimensions()), --antenna array
+    love.graphics.newQuad(16,0,16,16,greebleTilesetImage:getDimensions()), --light box
+    -- coloured boxes
+    love.graphics.newQuad(16,16,8,8,greebleTilesetImage:getDimensions()),
+    love.graphics.newQuad(16,24,8,8,greebleTilesetImage:getDimensions()), 
+    love.graphics.newQuad(24,16,8,8,greebleTilesetImage:getDimensions()), 
+    love.graphics.newQuad(24,24,8,8,greebleTilesetImage:getDimensions()),
+    -- railings
+    love.graphics.newQuad(32,17,16,3,greebleTilesetImage:getDimensions()),
+    love.graphics.newQuad(32,20,16,3,greebleTilesetImage:getDimensions()),
+    love.graphics.newQuad(32,23,16,3,greebleTilesetImage:getDimensions()),
+    love.graphics.newQuad(32,26,16,3,greebleTilesetImage:getDimensions()),
+    love.graphics.newQuad(32,29,16,3,greebleTilesetImage:getDimensions()),
+    
+    love.graphics.newQuad(48,0,16,32,greebleTilesetImage:getDimensions()), -- antenna
+  }
   
-  love.keypressed()
+  floorSpriteBatch = love.graphics.newSpriteBatch(hullTileset, 100)
+  gridSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
+  greebleSpriteBatch = love.graphics.newSpriteBatch(greebleTilesetImage, 100)
+  love.keypressed("space")
 end
 
 function index2xy(index, width)
@@ -243,23 +272,93 @@ function generate(seed)
     table.remove(rooms, j)
   end
   
+  shipGeometry = Geometry()
+  
   doors = {}
-  for _,room in ipairs(rooms) do
-    for i = 1,#rooms do
-      local door = room.doors[i]
-      doors[#doors+1] = door
+  for i,room in ipairs(rooms) do
+    for j = 1,#rooms do
+      local door = room.doors[j]
+      if door then
+        door.room1 = rooms[i]
+        door.room2 = rooms[j]
+        doors[#doors+1] = door
+      end
+    end
+    
+    shipGeometry:add(room.geometry, room.pos)
+  end
+    
+  -- Drawing to spritebatches
+  ----------------------------
+
+  floorSpriteBatch:clear()
+  greebleSpriteBatch:clear()
+  gridSpriteBatch:clear()
+  
+  
+  -- TODO: Center greebles that are < TILE_WIDTH wide
+  -- Greebles
+  local size = shipGeometry:size()
+  for x = 1,size.x+1 do
+    for y = 1,size.y+1 do
+      if not shipGeometry:get(x,y) then
+        --empty space for greebles
+        if random:random() > 0.4 then
+          local quad = greebleQuads[random:random(#greebleQuads)]
+          local _,_,quadWidth,quadHeight = quad:getViewport()
+          if shipGeometry:get(x+1,y) then
+            -- Pointing left
+            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH), (y-1)*TILE_WIDTH+quadWidth, -math.pi/2, 1, 1, 0, 0)
+          elseif shipGeometry:get(x-1,y) then
+            -- Pointing right
+            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadHeight, (y-1)*TILE_WIDTH, math.pi/2, 1, 1, 0, 0)
+          elseif shipGeometry:get(x,y+1) then
+            -- Pointing up
+            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH), 0, 1, 1, 0, 0)
+          elseif shipGeometry:get(x,y-1) then
+            -- Pointing down
+            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadWidth, (y-1)*TILE_WIDTH+quadHeight, math.pi, 1, 1, 0, 0)
+          end
+        end
+      else
+        --tilesetSpriteBatch:add(tileQuads[1], x*16, y*16)
+      end
     end
   end
   
-  for i = 1, #rooms do
-    local row = adjmatrix[i]
-    local s = ""
-    for j = 1, #rooms do
-      if row[j] then a = "1" else a = "0" end
-      s = s..a.." "
+  -- Hull
+  for x = 1, size.x do
+    for y = 1, size.y do
+      if shipGeometry:get(x,y) then 
+        local quad = tileset:getQuad(shipGeometry,x,y)
+        if quad then
+          floorSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
+        end
+      end
     end
-    print(s)
   end
+  
+  -- Rooms
+  for i = 1,#rooms do
+    local room = rooms[i]
+    if room then
+      gridSpriteBatch:setColor(room.colour)
+      
+      local size = room.geometry:size()
+      for x = 1, size.x do
+        for y = 1, size.y do
+          if room.geometry:get(x,y) then 
+            local quad = tileset:getQuad(room.geometry,x,y)
+            if quad then
+              gridSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)   
+            end
+          end
+        end
+      end
+--      love.graphics.rectangle("line", room.pos.x*scale, room.pos.y*scale, room.geometry:size().x*scale, room.geometry:size().y*scale)
+    end
+  end
+
 end
 
 local seed = 1573187624
@@ -295,29 +394,14 @@ function merge(arr1, arr2, dir)
     end
   end
   
-  -- Emergency routine for if mindiff is never found
-  if not mindiff then
-    print("NO MINDIFF")
-    local heighest = GRID_SIZE.y
-    local heighestindex = 1
-    for i = 1,#arr2 do
-      local height = arr2[i].pos[dir]
-      if height < heighest then
-        heighest = height
-        heighestindex = i
-      end
-    end
-    
-    local shortest = GRID_SIZE.y
-    for i = 1,#arr1 do
-      shortest = math.min(shortest, arr1[i].size[dir])
-    end
-    
-    mindiff = arr2[heighestindex].pos[dir] - (arr1[1].pos[dir] + math.floor(shortest/2))
-  end
-  
   for i = 1, #arr2 do
     arr2[i].pos[dir] = arr2[i].pos[dir] - mindiff
+  end
+end
+
+function compress(arr, dir)
+  for i=1,#arr-1 do
+    merge({arr[i]}, {arr[i+1]}, dir)
   end
 end
 
@@ -338,26 +422,11 @@ function compress(arr, dir)
   end
 end
 
-SCALE_FACTOR = 10
-
-love.graphics.setFont(love.graphics.newFont("monos.ttf", 16))
-local font = love.graphics.getFont()
-
-local font_scale = Vector(font:getWidth("a"), font:getHeight("a"))
+local scale = 3
 
 function love.draw()
-  
-  for i = 1,#room_types do
-    local template = room_types[i]
-    
-    love.graphics.setColor(template.colour)
-    
-    love.graphics.rectangle("fill", 5, i*20, 10, 5)
-    love.graphics.print(tostring(i).." - "..template.name, 15, i*20 - 5)
-  end
-  
   love.graphics.push()
-  
+  love.graphics.setPointSize(3)
   local tl,br
   
   for i = 1,#rooms do
@@ -389,54 +458,37 @@ function love.draw()
   
   local center = tl + (br-tl)/2
   
-  center = center:permul(font_scale)
-  center = Vector(225,150) - center
-  
+
+  center = center * TILE_WIDTH * scale
+  center = Vector(love.graphics.getWidth(), love.graphics.getHeight())/2 - center
   love.graphics.translate(center.x, center.y)
---  love.graphics.setColor(1,0,0)
---  love.graphics.setPointSize(5)
---  love.graphics.points(center.x, center.y)
+  love.graphics.scale(scale)
   
---    love.graphics.setColor(0,0.6,0.6)
---    for i = 1, #rects do
---      local room = rects[i]
---      love.graphics.rectangle("fill", room[1].x*font_scale.x, room[1].y*font_scale.y, room[2].x*font_scale.x, room[2].y*font_scale.y)
---    end
-  
-  for i = 1,#rooms do
-    local room = rooms[i]
-    if room then
-      love.graphics.setColor(room.colour)
-      local size = room.geometry:size()
-      local text = ""
-      for y = 1, size.y do
-        local line = ""
-        for x = 1, size.x do
-          line = line..(room.geometry:get(x,y) and "@" or " ")
-        end
-        text = text..line.."\n"
-      end
-      love.graphics.printf(text, room.pos.x*font_scale.x, room.pos.y*font_scale.y, (size.x)*font_scale.x*2)
-      love.graphics.setColor(1,1,1)
---      love.graphics.rectangle("line", room.pos.x*font_scale.x, room.pos.y*font_scale.y, room.geometry:size().x*font_scale.x, room.geometry:size().y*font_scale.y)
-    end
-  end
-
-
-
   love.graphics.setColor(1,1,1)
+  love.graphics.draw(greebleSpriteBatch)
+  
+  love.graphics.draw(floorSpriteBatch)
+  love.graphics.draw(gridSpriteBatch)
+
+
   for _,door in ipairs(doors) do
-    love.graphics.line(door.vec1.x*font_scale.x,door.vec1.y*font_scale.y,door.vec2.x*font_scale.x,door.vec2.y*font_scale.y)    
+    local room1, room2 = door.room1, door.room2
+    c1 = room1.pos + room1.geometry:size()/2
+    c2 = room2.pos + room2.geometry:size()/2
+    
+    --love.graphics.points(c1.x*scale, c1.y*scale, c2.x*scale, c2.y*scale)
+    --love.graphics.line(c1.x*scale,c1.y*scale,c2.x*scale,c2.y*scale)
+    love.graphics.line(door.vec1.x*scale*TILE_WIDTH,door.vec1.y*scale*TILE_WIDTH,door.vec2.x*scale*TILE_WIDTH,door.vec2.y*scale*TILE_WIDTH)    
   end
 --  for i = 1, #rooms do
 --    for j = 1, #rooms do
 --      local door = adjmatrix[i][j]
 --      if door then
---        love.graphics.line(door.vec1.x*font_scale.x,door.vec1.y*font_scale.y,door.vec2.x*font_scale.x,door.vec2.y*font_scale.y)
+--        love.graphics.line(door.vec1.x*scale,door.vec1.y*scale,door.vec2.x*scale,door.vec2.y*scale)
 --      end
 --    end
 --  end
   love.graphics.pop()
   
-  love.graphics.print("seed = "..tostring(seed), 10, font_scale.y*30)
+  love.graphics.print("seed = "..tostring(seed), 10, 1010)
 end
