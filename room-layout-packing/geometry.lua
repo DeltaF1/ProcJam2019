@@ -74,6 +74,45 @@ function GeometryView:size()
   return size
 end
 
+local function _set(geometry, pos, value)
+  if getmetatable(geometry) == GeometryView then
+    return geometry:set(x,y,value)
+  else
+    geometry[x] = geometry[x] or {}
+    geometry[x][y] = value
+    return True
+  end
+end
+
+function GeometryView:set(x,y,value)
+  if not Vector.isvector(x) then
+    x = Vector(x,y)
+    value = y
+  end
+  local pos = x
+  
+  --flag to see if a new geometry needs to be added
+  local modified
+  for i =1,#self.geometries do
+    local offset, geometry = unpack(self.geometries[i])
+    if pos >= offset and pos <= offset + _size(geometry) then
+      local off = pos - offset 
+      if _set(geometry, off, value) then
+        modified = true
+        break
+      end
+    end
+  end
+  
+  -- If none of our target geometries are in the scope of the position
+  -- And if the value isn't nil, otherwise we'd be trying to clear an already clear position
+  -- Add a new geometry
+  -- This is getting rid of all of the benefits of a table index look up...
+  if not modified and value ~= nil then
+    self:add({value}, pos)
+  end
+end
+
 --square = {  
 --  {1, 1},
 --  {1, 1},
