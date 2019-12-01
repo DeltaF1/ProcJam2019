@@ -213,6 +213,10 @@ function vector:max(v)
   return new(math.max(self.x, v.x), math.max(self.y, v.y))
 end
 
+function vector:floor()
+  return new(math.floor(self.x), math.floor(self.y))
+end
+
 -- the module
 return setmetatable({
 	new             = new,

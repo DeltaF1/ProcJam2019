@@ -1,5 +1,47 @@
 local Vector = require "vector"
 
+local TileGrid = {}
+
+TileGrid.__index = TileGrid
+
+function TileGrid.new(cls, raw)
+  local o = raw or {}
+  setmetatable(o, cls)
+  
+  if o[1] then
+    local h = #o[1]
+    for i = 2,#o do
+      if o[i] then
+        h = math.max(h, #o[i])
+      end
+    end
+    o._size = Vector(#o, h)
+  else
+    o._size = Vector()
+  end
+
+  return o
+end
+
+function TileGrid:get(x, y)
+  if Vector.isvector(x) then x,y = x.x, x.y end
+    
+  return self[x] and self[x][y] or nil
+end
+
+function TileGrid:set(x, y, value)
+  if Vector.isvector(x) then x,y,value = x.x, x.y, y end
+  
+  self[x] = self[x] or {}
+  self[x][y] = value
+
+  self._size = self._size:max(Vector(x,y))
+end
+
+function TileGrid:size()
+  return self._size
+end
+
 local GeometryView = {}
 
 GeometryView.__index = GeometryView
@@ -7,7 +49,7 @@ GeometryView.__index = GeometryView
 function GeometryView.new(cls, raw)
   -- list of {offset, view}
   local o = {}
-  setmetatable(o, GeometryView)
+  setmetatable(o, cls)
   o.geometries = {}
   
   if raw then
@@ -33,7 +75,7 @@ function GeometryView:add(geometry, offset)
 end
 
 local function _get(geometry, pos)
-  if getmetatable(geometry) == GeometryView then
+  if geometry.get then
     return geometry:get(pos)
   else
     return (geometry[pos.x] or {})[pos.y]
@@ -41,7 +83,7 @@ local function _get(geometry, pos)
 end
 
 local function _size(geometry)
-  if getmetatable(geometry) == GeometryView then
+  if geometry.size then
     return geometry:size()
   else
     return Vector(#geometry, #geometry[1])
@@ -74,44 +116,44 @@ function GeometryView:size()
   return size
 end
 
-local function _set(geometry, pos, value)
-  if getmetatable(geometry) == GeometryView then
-    return geometry:set(x,y,value)
-  else
-    geometry[x] = geometry[x] or {}
-    geometry[x][y] = value
-    return True
-  end
-end
+--local function _set(geometry, pos, value)
+--  if getmetatable(geometry) == GeometryView then
+--    return geometry:set(x,y,value)
+--  else
+--    geometry[x] = geometry[x] or {}
+--    geometry[x][y] = value
+--    return True
+--  end
+--end
 
-function GeometryView:set(x,y,value)
-  if not Vector.isvector(x) then
-    x = Vector(x,y)
-    value = y
-  end
-  local pos = x
+--function GeometryView:set(x,y,value)
+--  if not Vector.isvector(x) then
+--    x = Vector(x,y)
+--    value = y
+--  end
+--  local pos = x
   
-  --flag to see if a new geometry needs to be added
-  local modified
-  for i =1,#self.geometries do
-    local offset, geometry = unpack(self.geometries[i])
-    if pos >= offset and pos <= offset + _size(geometry) then
-      local off = pos - offset 
-      if _set(geometry, off, value) then
-        modified = true
-        break
-      end
-    end
-  end
+--  --flag to see if a new geometry needs to be added
+--  local modified
+--  for i =1,#self.geometries do
+--    local offset, geometry = unpack(self.geometries[i])
+--    if pos >= offset and pos <= offset + _size(geometry) then
+--      local off = pos - offset 
+--      if _set(geometry, off, value) then
+--        modified = true
+--        break
+--      end
+--    end
+--  end
   
-  -- If none of our target geometries are in the scope of the position
-  -- And if the value isn't nil, otherwise we'd be trying to clear an already clear position
-  -- Add a new geometry
-  -- This is getting rid of all of the benefits of a table index look up...
-  if not modified and value ~= nil then
-    self:add({value}, pos)
-  end
-end
+--  -- If none of our target geometries are in the scope of the position
+--  -- And if the value isn't nil, otherwise we'd be trying to clear an already clear position
+--  -- Add a new geometry
+--  -- This is getting rid of all of the benefits of a table index look up...
+--  if not modified and value ~= nil then
+--    self:add({value}, pos)
+--  end
+--end
 
 --square = {  
 --  {1, 1},
@@ -135,6 +177,4 @@ end
 --  print(s)
 --end
 
-return setmetatable({}, {
-    __call = GeometryView.new
-})
+return {TileGrid = TileGrid, GeometryView = GeometryView}

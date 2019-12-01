@@ -1,5 +1,8 @@
 local Vector = require "vector"
-local Geometry = require "geometry"
+local geometry = require "geometry"
+local TileGrid = geometry.TileGrid
+local Geometry = geometry.GeometryView
+
 local TileSet = require "tileset"
 
 function love.load(arg)
@@ -31,8 +34,8 @@ function love.load(arg)
     love.graphics.newQuad(48,0,16,32,greebleTilesetImage:getDimensions()), -- antenna
   }
   
-  floorSpriteBatch = love.graphics.newSpriteBatch(hullTileset, 100)
-  gridSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
+  wallSpriteBatch = love.graphics.newSpriteBatch(hullTileset, 100)
+  roomTileSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
   greebleSpriteBatch = love.graphics.newSpriteBatch(greebleTilesetImage, 100)
   love.keypressed("space")
 end
@@ -137,7 +140,7 @@ function generate(seed)
         geometry[i][j] = type
       end
     end
-    room.geometry = Geometry(geometry)
+    room.geometry = Geometry:new(geometry)
     room.doors = {}
     return room
   end
@@ -272,7 +275,7 @@ function generate(seed)
     table.remove(rooms, j)
   end
   
-  shipGeometry = Geometry()
+  shipGeometry = Geometry:new()
   
   doors = {}
   for i,room in ipairs(rooms) do
@@ -291,9 +294,9 @@ function generate(seed)
   -- Drawing to spritebatches
   ----------------------------
 
-  floorSpriteBatch:clear()
+  wallSpriteBatch:clear()
   greebleSpriteBatch:clear()
-  gridSpriteBatch:clear()
+  roomTileSpriteBatch:clear()
   
   
   -- TODO: Center greebles that are < TILE_WIDTH wide
@@ -326,13 +329,13 @@ function generate(seed)
     end
   end
   
-  -- Hull
+  -- Walls
   for x = 1, size.x do
     for y = 1, size.y do
       if shipGeometry:get(x,y) then 
         local quad = tileset:getQuad(shipGeometry,x,y)
         if quad then
-          floorSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
+          wallSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
         end
       end
     end
@@ -342,7 +345,7 @@ function generate(seed)
   for i = 1,#rooms do
     local room = rooms[i]
     if room then
-      gridSpriteBatch:setColor(room.colour)
+      roomTileSpriteBatch:setColor(room.colour)
       
       local size = room.geometry:size()
       for x = 1, size.x do
@@ -350,7 +353,7 @@ function generate(seed)
           if room.geometry:get(x,y) then 
             local quad = tileset:getQuad(room.geometry,x,y)
             if quad then
-              gridSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)   
+              roomTileSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)   
             end
           end
         end
@@ -467,8 +470,8 @@ function love.draw()
   love.graphics.setColor(1,1,1)
   love.graphics.draw(greebleSpriteBatch)
   
-  love.graphics.draw(floorSpriteBatch)
-  love.graphics.draw(gridSpriteBatch)
+  love.graphics.draw(wallSpriteBatch)
+  love.graphics.draw(roomTileSpriteBatch)
 
 
   for _,door in ipairs(doors) do
