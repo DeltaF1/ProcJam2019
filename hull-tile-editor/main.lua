@@ -52,7 +52,6 @@ function love.load()
   point = Vector(8.5,8.5)
   
   scale = 10
-
   
   anchors = {newAnchor(Vector(7.5,7.5), 1)}
   curAnchor = 1
@@ -113,6 +112,8 @@ function love.draw()
   love.graphics.setColor(1,1,1)
   love.graphics.draw(image)
 
+
+  
   for i = 1,#anchors do
     if i ~= curAnchor then
       local anchor = anchors[i]
@@ -131,6 +132,13 @@ function love.draw()
   end
   
   love.graphics.pop()
+  
+  for x = 1, 256 do
+    love.graphics.line(x*scale,0,x*scale,256*scale)
+    for y = 1, 256 do
+      love.graphics.line(0,y*scale,256*scale,y*scale)
+    end
+  end
   
   love.graphics.setColor(1,0,0)
   love.graphics.line(love.graphics.getWidth()/2, 0, love.graphics.getWidth()/2, love.graphics.getHeight())
