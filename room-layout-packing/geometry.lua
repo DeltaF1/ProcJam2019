@@ -72,6 +72,7 @@ function GeometryView:add(geometry, offset)
       entry[1] = entry[1] - origin_shift
     end
   end
+  return origin_shift
 end
 
 local function _get(geometry, pos)

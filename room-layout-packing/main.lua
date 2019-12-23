@@ -8,7 +8,9 @@ local TileSet = require "tileset"
 function love.load(arg)
   if arg[#arg] == "-debug" then require("mobdebug").start() end
   love.graphics.setDefaultFilter("nearest", "nearest")
-  love.window.setMode(1024,1024)
+  WINDOW_WIDTH = 1024
+  WINDOW_HEIGHT = 700
+  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   hullTileset = love.graphics.newImage("tileset.png")
   gridTileset = love.graphics.newImage("room_tileset.png")
   TILE_WIDTH=16
@@ -52,7 +54,7 @@ function xy2index(x, y, width)
   return x + width*(y-1)
 end
 
-ROOM_PRESELECTED_OFFSET = 3
+REQUIRED_ROOM_TYPE_OFFSET = 3
 room_types = {
   -- Special rooms that aren't chosen by the room generator
   {name = "Helm",               wrange={2,2}, hrange={2,2}, colour = {0.8,0.9,0.1,0.85}},
@@ -147,7 +149,8 @@ function generate(seed)
   
   rooms = {}
   
-  for i = 1, ROOM_PRESELECTED_OFFSET-1 do
+  -- Generate one of each of the "required" rooms
+  for i = 1, REQUIRED_ROOM_TYPE_OFFSET-1 do
     local index
     repeat
       index = random:random(width*height)
@@ -155,12 +158,15 @@ function generate(seed)
     rooms[index] = gen_room(i)
   end
   
+  -- Fill the remaining space with other room types
   for i = 1,width*height do
     if not rooms[i] then
-      rooms[i] = gen_room(random:random(ROOM_PRESELECTED_OFFSET,#room_types))
+      rooms[i] = gen_room(random:random(REQUIRED_ROOM_TYPE_OFFSET,#room_types))
     end
   end
   
+  -- Fill the grid
+  -- TODO: A better way of spatial partitioning here?
   for y = 1,height do
     grid[y] = {}
     for x = 1,width do
@@ -170,18 +176,14 @@ function generate(seed)
   
   function gen_filler() return {size = GRID_SIZE - Vector(2,2), colour={0.01,0.01,0.01}} end
   
-  --[[grid = {
-    {{size=Vector(2,5)}},
-    {{size=Vector(2,10)}},
-    {{size=Vector(2,4)}},
-    {{size=Vector(2,7)}},
-    }]]--
-  
+  -- Generate positions within each grid tile
+  -- midx,midy are used to ensure alignment so that grids can collide
   local midx = math.floor(GRID_SIZE.x / 2)
   local midy = math.floor(GRID_SIZE.y / 2)
   for y = 1,#grid do
     for x = 1, #grid[1] do
       local room = grid[y][x]
+      -- This doesn't actually matter because they're getting crammed together anyway...
       local xoff = random:random(math.max(0, midy-room.size.x), math.min(midx - 1, GRID_SIZE.x-room.size.x))
       local yoff = random:random(math.max(0, midy-room.size.y), math.min(midy - 1, GRID_SIZE.y-room.size.y))
       room.pos = Vector(x*GRID_SIZE.x + xoff, y*GRID_SIZE.y + yoff)
@@ -263,13 +265,21 @@ function generate(seed)
     
     room1.doors = sparse_merge(room1.doors, room2.doors, #rooms)
     
-    room1.geometry:add(room2.geometry, room2.pos - room1.pos)
-    
-    room1.pos = Vector(math.min(room1.pos.x, room2.pos.x), math.min(room1.pos.y, room2.pos.y))
+    local origin_shift = room1.geometry:add(room2.geometry, room2.pos - room1.pos)
+    room1.pos = room1.pos + origin_shift
     
     for _, pair in ipairs(to_merge) do
-      if pair[1] > j then pair[1] = pair[1] - 1 end
-      if pair[2] > j then pair[2] = pair[2] - 1 end
+      if pair[1] > j then
+        pair[1] = pair[1] - 1 
+      elseif pair[1] == j then
+        pair[1] = i
+      end
+      
+      if pair[2] > j then
+        pair[2] = pair[2] - 1
+      elseif pair[2] == j then
+        pair[2] = i
+      end
     end
     
     table.remove(rooms, j)
@@ -364,12 +374,12 @@ function generate(seed)
 
 end
 
-local seed = 1573187624
+local seed = 1573187644
 function love.keypressed()
   generate(seed)
   seed = seed + 1
 end
-
+ 
 -- From https://stackoverflow.com/a/16691908
 function overlap(start1,end1,start2,end2)
   return math.max(0, math.min(end1, end2) - math.max(start1, start2))
@@ -425,7 +435,7 @@ function compress(arr, dir)
   end
 end
 
-local scale = 3
+local scale = 2
 
 function love.draw()
   love.graphics.push()
@@ -491,7 +501,20 @@ function love.draw()
 --      end
 --    end
 --  end
+--  love.graphics.setColor(1,0,0)
+--  for i = 1,#rects do
+--    local rect = rects[i]
+--    love.graphics.rectangle("line", rect[1].x*TILE_WIDTH, rect[1].y*TILE_WIDTH, rect[2].x*TILE_WIDTH, rect[2].y*TILE_WIDTH)
+--  end
+  
+--  love.graphics.setColor(0,0,1)
+--  for i = 1,#rooms do
+--    local room = rooms[i]
+--    love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
+--  end
+  
   love.graphics.pop()
   
-  love.graphics.print("seed = "..tostring(seed), 10, 1010)
+  love.graphics.setColor(1,1,1)
+  love.graphics.print("seed = "..tostring(seed), 10, WINDOW_HEIGHT - 20)
 end
