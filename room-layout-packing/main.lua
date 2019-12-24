@@ -6,17 +6,28 @@ local Geometry = geometry.GeometryView
 local TileSet = require "tileset"
 
 function love.load(arg)
+  -- ZeroBrane debugging
   if arg[#arg] == "-debug" then require("mobdebug").start() end
+  
+  -- Debug drawing/logging settings
+  DEBUG = {
+    seed = true,
+  }
+  
   love.graphics.setDefaultFilter("nearest", "nearest")
   WINDOW_WIDTH = 1024
   WINDOW_HEIGHT = 700
   love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
+  
   hullTileset = love.graphics.newImage("tileset.png")
   gridTileset = love.graphics.newImage("room_tileset.png")
-  TILE_WIDTH=16
-  local tilesetwidth,tilesetheight = hullTileset:getDimensions()
-  tileset = TileSet(tilesetwidth, tilesetheight, TILE_WIDTH)
   greebleTilesetImage = love.graphics.newImage("greebles.png")
+  
+  local tilesetwidth,tilesetheight = hullTileset:getDimensions()
+  
+  TILE_WIDTH=16
+  
+  tileset = TileSet(tilesetwidth, tilesetheight, TILE_WIDTH)
   
   greebleQuads = {
     love.graphics.newQuad(0,0,16,32,greebleTilesetImage:getDimensions()), --antenna array
@@ -39,6 +50,8 @@ function love.load(arg)
   wallSpriteBatch = love.graphics.newSpriteBatch(hullTileset, 100)
   roomTileSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
   greebleSpriteBatch = love.graphics.newSpriteBatch(greebleTilesetImage, 100)
+  
+  -- janky first generation
   love.keypressed("space")
 end
 
@@ -258,31 +271,34 @@ function generate(seed)
     
   for _, merge_pair in ipairs(to_merge) do
     local i,j = unpack(merge_pair)
-    
-    local room1, room2 = rooms[i], rooms[j]
-    
-    assert(room1 and room2)
-    
-    room1.doors = sparse_merge(room1.doors, room2.doors, #rooms)
-    
-    local origin_shift = room1.geometry:add(room2.geometry, room2.pos - room1.pos)
-    room1.pos = room1.pos + origin_shift
-    
-    for _, pair in ipairs(to_merge) do
-      if pair[1] > j then
-        pair[1] = pair[1] - 1 
-      elseif pair[1] == j then
-        pair[1] = i
+    if i ~= j then
+      --if i > j then i,j = j,i end
+      
+      local room1, room2 = rooms[i], rooms[j]
+      
+      assert(room1 and room2, "No nil merges")
+      
+      room1.doors = sparse_merge(room1.doors, room2.doors, #rooms)
+      
+      local origin_shift = room1.geometry:add(room2.geometry, room2.pos - room1.pos)
+      room1.pos = room1.pos + origin_shift
+      
+      for _, pair in ipairs(to_merge) do
+        if pair[1] > j then
+          pair[1] = pair[1] - 1 
+        elseif pair[1] == j then
+          pair[1] = i
+        end
+        
+        if pair[2] > j then
+          pair[2] = pair[2] - 1
+        elseif pair[2] == j then
+          pair[2] = i
+        end
       end
       
-      if pair[2] > j then
-        pair[2] = pair[2] - 1
-      elseif pair[2] == j then
-        pair[2] = i
-      end
+      table.remove(rooms, j)
     end
-    
-    table.remove(rooms, j)
   end
   
   shipGeometry = Geometry:new()
@@ -374,10 +390,14 @@ function generate(seed)
 
 end
 
-local seed = 1573187644
-function love.keypressed()
-  generate(seed)
-  seed = seed + 1
+local seed = 1573187721
+function love.keypressed(key)
+  if key == "space" then
+    generate(seed)
+    seed = seed + 1
+  elseif key == "r" then
+    DEBUG.room_bounds = not DEBUG.room_bounds
+  end
 end
  
 -- From https://stackoverflow.com/a/16691908
@@ -435,7 +455,7 @@ function compress(arr, dir)
   end
 end
 
-local scale = 2
+local scale = 3
 
 function love.draw()
   love.graphics.push()
@@ -493,28 +513,33 @@ function love.draw()
     --love.graphics.line(c1.x*scale,c1.y*scale,c2.x*scale,c2.y*scale)
     love.graphics.line(door.vec1.x*scale*TILE_WIDTH,door.vec1.y*scale*TILE_WIDTH,door.vec2.x*scale*TILE_WIDTH,door.vec2.y*scale*TILE_WIDTH)    
   end
---  for i = 1, #rooms do
---    for j = 1, #rooms do
---      local door = adjmatrix[i][j]
---      if door then
---        love.graphics.line(door.vec1.x*scale,door.vec1.y*scale,door.vec2.x*scale,door.vec2.y*scale)
---      end
---    end
---  end
---  love.graphics.setColor(1,0,0)
---  for i = 1,#rects do
---    local rect = rects[i]
---    love.graphics.rectangle("line", rect[1].x*TILE_WIDTH, rect[1].y*TILE_WIDTH, rect[2].x*TILE_WIDTH, rect[2].y*TILE_WIDTH)
---  end
+  for i = 1, #rooms do
+    for j = 1, #rooms do
+      local door = adjmatrix[i][j]
+      if door then
+        love.graphics.line(door.vec1.x*scale,door.vec1.y*scale,door.vec2.x*scale,door.vec2.y*scale)
+      end
+    end
+  end
+  if DEBUG.rect_bounds then
+    love.graphics.setColor(1,0,0)
+    for i = 1,#rects do
+      local rect = rects[i]
+      love.graphics.rectangle("line", rect[1].x*TILE_WIDTH, rect[1].y*TILE_WIDTH, rect[2].x*TILE_WIDTH, rect[2].y*TILE_WIDTH)
+    end
+  end
   
---  love.graphics.setColor(0,0,1)
---  for i = 1,#rooms do
---    local room = rooms[i]
---    love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
---  end
+  if DEBUG.room_bounds then
+    for i = 1,#rooms do
+      local room = rooms[i]
+      love.graphics.setColor(room.colour)
+      love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
+    end
+  end
   
   love.graphics.pop()
-  
-  love.graphics.setColor(1,1,1)
-  love.graphics.print("seed = "..tostring(seed), 10, WINDOW_HEIGHT - 20)
+  if DEBUG.seed then
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("seed = "..tostring(seed), 10, WINDOW_HEIGHT - 20)
+  end
 end
