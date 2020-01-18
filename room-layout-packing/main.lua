@@ -12,7 +12,7 @@ function love.load(arg)
   -- Debug drawing/logging settings
   DEBUG = {
     seed = true,
-    mouse_pos = true
+    mouse_pos = false
   }
   
   love.graphics.setDefaultFilter("nearest", "nearest")
@@ -24,6 +24,7 @@ function love.load(arg)
   wallTileAtlas = love.graphics.newImage("room_0px.png")
   gridTileset = love.graphics.newImage("room_1px.png")
   greebleAtlas = love.graphics.newImage("greebles.png")
+  propAtlas = love.graphics.newImage("props.png")
   
   door_open = love.graphics.newImage("door_open.png")
   door_closed = love.graphics.newImage("door_closed.png")
@@ -52,11 +53,16 @@ function love.load(arg)
     love.graphics.newQuad(48,0,16,32,greebleAtlas:getDimensions()), -- antenna
   }
   
+  propTypes = {
+    {quad = love.graphics.newQuad(0,12,31,20,propAtlas:getDimensions()), rotate=true}, -- table
+    {quad = love.graphics.newQuad(0,0,11,12,propAtlas:getDimensions()), rotate=true}, -- console
+  }
+  
   hullSpritebatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
   wallSpritebatch = love.graphics.newSpriteBatch(wallTileAtlas, 100)
   roomTileSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
   greebleSpriteBatch = love.graphics.newSpriteBatch(greebleAtlas, 100)
-  
+  propSpriteBatch = love.graphics.newSpriteBatch(propAtlas, 100)
   -- janky first generation
   love.keypressed("space")
 end
@@ -392,7 +398,7 @@ function generate(seed)
   greebleSpriteBatch:clear()
   roomTileSpriteBatch:clear()
   wallSpritebatch:clear()
-  
+  propSpriteBatch:clear()
   
   -- TODO: Center greebles that are < TILE_WIDTH wide
   -- Greebles
@@ -454,7 +460,7 @@ function generate(seed)
   for i = 1,#rooms do
     local room = rooms[i]
     if room then
-      roomTileSpriteBatch:setColor(room.colour)
+      roomTileSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
       wallSpritebatch:setColor(0.3, 0.3, 0.3)
       local size = room.geometry:size()
       for x = 1, size.x do
@@ -468,7 +474,74 @@ function generate(seed)
           end
         end
       end
---      love.graphics.rectangle("line", room.pos.x*scale, room.pos.y*scale, room.geometry:size().x*scale, room.geometry:size().y*scale)
+    end
+  end
+  
+  props = {}
+  TRIES = 5
+  propgeometry = TileGrid:new()
+  
+  for i = 1, #rooms do
+    local room = rooms[i]
+    local size = room.geometry:size()
+    for propType = 1, #propTypes do
+      local prop = propTypes[propType]
+      for i = 1, TRIES do
+        local x = random:random(1, size.x)
+        local y = random:random(1, size.y)
+        
+        local _, _, w, h = prop.quad:getViewport()
+        
+        if prop.rotate then
+          rot = random:random(4)
+        else
+          rot = 1
+        end
+
+        local angle = ({0,math.pi/2,math.pi,-math.pi/2})[rot]
+        local offset = ({Vector(0,0), Vector(0,h), Vector(w,h), Vector(w,0)})[rot]
+
+        if rot % 2 == 0 then
+          w,h = h,w
+        end
+        
+        local tw = math.ceil(w/TILE_WIDTH)
+        local th = math.ceil(h/TILE_WIDTH)
+        
+       
+        
+        local br = false
+        for checkX = x, x+tw do
+          for checkY = y, y+th do
+            if not room.geometry:get(checkX, checkY) or propgeometry:get(checkX+room.pos.x,checkY+room.pos.y) == "p" then
+              br = true
+            end
+            if br then break end
+          end
+          if br then break end
+        end
+        
+        -- Placement is unobstructed!
+        if not br then
+          x = x + room.pos.x
+          y = y + room.pos.y
+          for setX = x, x+math.ceil(w/TILE_WIDTH)-1 do
+            for setY = y, y+math.ceil(h/TILE_WIDTH)-1 do
+              propgeometry:set(setX, setY, "p")
+            end
+          end
+          
+          local jitter = Vector(random:random(1,(tw*TILE_WIDTH)-w), random:random(1,(th*TILE_WIDTH)-h))
+        
+          print(jitter)
+          
+          offset = offset
+          
+          pos = Vector(x,y)
+          props[#props+1] = {quad=prop.quad, position = pos}
+          propSpriteBatch:add(prop.quad, ((pos.x-1)*TILE_WIDTH)+offset.y, ((pos.y-1)*TILE_WIDTH)+offset.x, angle, 1, 1)
+        end
+      end
     end
   end
 end
@@ -484,6 +557,8 @@ function love.keypressed(key)
     DEBUG.rect_bounds = not DEBUG.rect_bounds
   elseif key == "n" then
     DEBUG.tile_numbers = not DEBUG.tile_numbers
+  elseif key == "p" then
+    DEBUG.prop_grid = not DEBUG.prop_grid
   elseif key == "=" then
     viewScale = viewScale + 0.2
   elseif key == "-" then
@@ -562,23 +637,24 @@ end
 
 function love.mousepressed(x,y,button)
   local screenSpace = Vector(x,y)
+  
+  -- Position in ship pixel space
   local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
-  shipSpace = shipSpace / TILE_WIDTH
   
   local door
+  local br = false
   for i = 1, #adjmatrix do
     for j = i, #adjmatrix do
-      local br = false
       door = adjmatrix[i][j]
       if door then
-       if line_segment_min(door.vec1, door.vec2, shipSpace) < 2 / TILE_WIDTH then
-        br = true
-        door.open = not door.open
-        break
+        if line_segment_min(door.vec1 * TILE_WIDTH, door.vec2 * TILE_WIDTH, shipSpace) < 2 then
+          br = true
+          door.open = not door.open
+          break
         end
       end
-      if br then break end
     end
+    if br then break end
   end
 end
 
@@ -628,8 +704,9 @@ function love.draw()
   love.graphics.draw(greebleSpriteBatch)
   
   love.graphics.draw(hullSpritebatch)
-  --love.graphics.draw(roomTileSpriteBatch)
+  love.graphics.draw(roomTileSpriteBatch)
   love.graphics.draw(wallSpritebatch)
+  love.graphics.draw(propSpriteBatch)
   
   for i = 1, #rooms do
     for j = i, #rooms do
@@ -669,7 +746,17 @@ function love.draw()
     end
   end
   
-  
+  if DEBUG.prop_grid then
+    love.graphics.setColor(1,1,1,0.3)
+    local size = shipGeometry:size()
+    for x = 1, size.x do
+      for y = 1, size.y do
+        if propgeometry:get(x,y) then
+          love.graphics.rectangle("fill", (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH, TILE_WIDTH, TILE_WIDTH)
+        end
+      end
+    end
+  end
   
   love.graphics.pop()
   love.graphics.push()
