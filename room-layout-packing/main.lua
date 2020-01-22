@@ -66,6 +66,15 @@ function love.load(arg)
   roomTileSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
   greebleSpriteBatch = love.graphics.newSpriteBatch(greebleAtlas, 100)
   propSpriteBatch = love.graphics.newSpriteBatch(propAtlas, 100)
+  
+  stardir = Vector(-1, 0.01)
+
+  stars = {}
+
+  for i = 1, 200 do
+    stars[i] = Vector(love.math.random(1,WINDOW_WIDTH), love.math.random(1,WINDOW_HEIGHT))
+  end
+  
   -- janky first generation
   love.keypressed("space")
 end
@@ -663,9 +672,32 @@ function love.mousepressed(x,y,button)
   end
 end
 
+ELAPSED_TIME = 0
+function love.update(dt)
+  ELAPSED_TIME = ELAPSED_TIME + dt
+end
+
+STAR_SPEED = 10
+
 viewScale = 3
 
 function love.draw()
+  love.graphics.setColor(1,1,1)
+  for n = 1,3 do
+    love.graphics.setPointSize(n)
+    for i = 1, #stars do
+      -- TODO: replace with points(unpack(stars)) and love.translate
+      local star = stars[i]
+      local drawstar = star + (stardir * ELAPSED_TIME * n * STAR_SPEED)
+      drawstar = drawstar + Vector(1,1) * n * 12345
+      
+      drawstar.x = drawstar.x % (WINDOW_WIDTH + 20) - 20
+      drawstar.y = drawstar.y % (WINDOW_HEIGHT + 20) - 20
+      
+      love.graphics.points(drawstar.x, drawstar.y)
+    end
+  end
+  
   love.graphics.push()
   love.graphics.setPointSize(3)
   local tl,br
