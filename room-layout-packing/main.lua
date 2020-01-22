@@ -700,6 +700,8 @@ function love.draw()
   
   love.graphics.push()
   love.graphics.setPointSize(3)
+  
+  -- TODO: This should be part of ship generation, not calculated every frame
   local tl,br
   
   for i = 1,#rooms do
@@ -738,6 +740,7 @@ function love.draw()
   love.graphics.scale(viewScale)
   
   love.graphics.setColor(1,1,1)
+  
   love.graphics.draw(greebleSpriteBatch)
   
   love.graphics.draw(hullSpritebatch)
@@ -796,6 +799,7 @@ function love.draw()
   end
   
   love.graphics.pop()
+
   love.graphics.push()
   love.graphics.translate(center.x, center.y)
   if DEBUG.tile_numbers then
@@ -808,6 +812,7 @@ function love.draw()
     end
   end
   love.graphics.pop()
+  
   if DEBUG.seed then
     love.graphics.setColor(1,1,1)
     love.graphics.print("seed = "..tostring(seed), 10, WINDOW_HEIGHT - 20)
