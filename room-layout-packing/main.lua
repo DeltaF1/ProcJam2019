@@ -54,8 +54,11 @@ function love.load(arg)
   }
   
   propTypes = {
-    {quad = love.graphics.newQuad(0,12,31,20,propAtlas:getDimensions()), rotate=true}, -- table
-    {quad = love.graphics.newQuad(0,0,11,12,propAtlas:getDimensions()), rotate=true}, -- console
+    {quad = love.graphics.newQuad(0,12,31,20,propAtlas:getDimensions()), rotate=true, rooms={[4]=true,[6]=true}}, -- table
+    {quad = love.graphics.newQuad(0,0,11,12,propAtlas:getDimensions()), rotate=true, rooms={[1]=true}, frequency = 100, max=2}, -- console
+    {quad = love.graphics.newQuad(31,18,14,14,propAtlas:getDimensions()), rotate=false, rooms={[3]=true}, frequency=10}, -- crate
+    {quad = love.graphics.newQuad(48,21,30,10,propAtlas:getDimensions()), rotate=true, rooms={[3]=true}, frequency=10}, -- crate-long
+    {quad = love.graphics.newQuad(24,0,16,9,propAtlas:getDimensions()), rotate=true, rooms={[5]=true}, frequency=10}
   }
   
   hullSpritebatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
@@ -83,14 +86,14 @@ REQUIRED_ROOM_TYPE_OFFSET = 3
 room_types = {
   -- Special rooms that aren't chosen by the room generator
   {name = "Helm",               wrange={2,2}, hrange={2,2}, colour = {0.8,0.9,0.1,0.85}},
-  {name = "Engine",             wrange={2,2}, hrange={2,3}, colour={0.58330589736158589, 0.024793900080875231, 0.83640388831262813,0.85}},
+  {name = "Engine",             wrange={2,2}, hrange={2,3}, colour={0.58330589736158589, 0.024793900080875231, 0.83640388831262813}},
   -----------------------------  ROOM_PRESELECTED_OFFSET
-  {name = "Storage Bay",        wrange={3,6}, hrange={3,6}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504,0.85}},
-  {name = "Mess Hall",          wrange = {2,3}, hrange={2,3}, colour = {0.3540978676870179, 0.47236376329459961, 0.67900487187065317,0.85}},
-  {name = "Sleeping quarters",  wrange = {1,2}, hrange={1,2}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407,0.85}},
-  {name = "Lounge",             wrange = {2,3}, hrange={2,3}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767,0.85}},
-  {name = "Corridor",         wrange={2,10}, hrange={1,2}, colour = {0.3,0.3,0.3,0.85}},
-  {name = "Corridor",         wrange={1,2}, hrange={2,10}, colour = {0.3,0.3,0.3,0.85}},
+  {name = "Storage Bay",        wrange={3,6}, hrange={3,6}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504}},
+  {name = "Mess Hall",          wrange = {2,3}, hrange={2,3}, colour = {0.3540978676870179, 0.47236376329459961, 0.67900487187065317}},
+  {name = "Sleeping quarters",  wrange = {1,2}, hrange={1,2}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407}},
+  {name = "Lounge",             wrange = {2,3}, hrange={2,3}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767}},
+  {name = "Corridor",         wrange={2,10}, hrange={1,2}, colour = {0.3,0.3,0.3}},
+  {name = "Corridor",         wrange={1,2}, hrange={2,10}, colour = {0.3,0.3,0.3}},
 }
 
 
@@ -172,7 +175,7 @@ function generate(seed)
   
   function gen_room(type)
     local template = room_types[type]
-    local room = {}
+    local room = {type=type}
     
     local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
     room.size = size
@@ -410,7 +413,7 @@ function generate(seed)
     for y = 1,size.y+1 do
       if not shipGeometry:get(x,y) then
         --empty space for greebles
-        if random:random() > 0.4 then
+        if random:random() > 0.2 then
           local quad = greebleQuads[random:random(#greebleQuads)]
           local _,_,quadWidth,quadHeight = quad:getViewport()
           if shipGeometry:get(x+1,y) then
@@ -478,7 +481,7 @@ function generate(seed)
   end
   
   props = {}
-  TRIES = 5
+  FREQUENCY = 5
   propgeometry = TileGrid:new()
   
   for i = 1, #rooms do
@@ -486,60 +489,62 @@ function generate(seed)
     local size = room.geometry:size()
     for propType = 1, #propTypes do
       local prop = propTypes[propType]
-      for i = 1, TRIES do
-        local x = random:random(1, size.x)
-        local y = random:random(1, size.y)
-        
-        local _, _, w, h = prop.quad:getViewport()
-        
-        if prop.rotate then
-          rot = random:random(4)
-        else
-          rot = 1
-        end
+      if not prop.rooms or prop.rooms[room.type] then
+        count = 0
+        for i = 1, prop.frequency or FREQUENCY do
+          if prop.max and count >= prop.max then break end
+          
+          local roomX = random:random(1, size.x)
+          local roomY = random:random(1, size.y)
+          
+          local _, _, pixelWidth, pixelHeight = prop.quad:getViewport()
+          
+          if prop.rotate then
+            rot = random:random(4)
+          else
+            rot = 1
+          end
 
-        local angle = ({0,math.pi/2,math.pi,-math.pi/2})[rot]
-        local offset = ({Vector(0,0), Vector(0,h), Vector(w,h), Vector(w,0)})[rot]
+          local angle = ({0,math.rad(90),math.rad(180),math.rad(270)})[rot]
+          local offset = ({Vector(0,0), Vector(pixelHeight,0), Vector(pixelWidth,pixelHeight), Vector(0,pixelWidth)})[rot]
 
-        if rot % 2 == 0 then
-          w,h = h,w
-        end
-        
-        local tw = math.ceil(w/TILE_WIDTH)
-        local th = math.ceil(h/TILE_WIDTH)
-        
-       
-        
-        local br = false
-        for checkX = x, x+tw do
-          for checkY = y, y+th do
-            if not room.geometry:get(checkX, checkY) or propgeometry:get(checkX+room.pos.x,checkY+room.pos.y) == "p" then
-              br = true
+          if rot % 2 == 0 then
+            pixelWidth,pixelHeight = pixelHeight,pixelWidth
+          end
+          
+          local gridWidth = math.ceil(pixelWidth/TILE_WIDTH)
+          local gridHeight = math.ceil(pixelHeight/TILE_WIDTH)
+          
+          local br = false
+          for checkX = roomX, roomX+gridWidth-1 do
+            for checkY = roomY, roomY+gridHeight-1 do
+              if not room.geometry:get(checkX, checkY) or propgeometry:get(checkX+room.pos.x,checkY+room.pos.y) then
+                br = true
+              end
+              if br then break end
             end
             if br then break end
           end
-          if br then break end
-        end
-        
-        -- Placement is unobstructed!
-        if not br then
-          x = x + room.pos.x
-          y = y + room.pos.y
-          for setX = x, x+math.ceil(w/TILE_WIDTH)-1 do
-            for setY = y, y+math.ceil(h/TILE_WIDTH)-1 do
-              propgeometry:set(setX, setY, "p")
+          
+          -- Placement is unobstructed!
+          if not br then
+            roomX = roomX + room.pos.x
+            roomY = roomY + room.pos.y
+            for setX = roomX, roomX+gridWidth-1 do
+              for setY = roomY, roomY+gridHeight-1 do
+                propgeometry:set(setX, setY, "p")
+              end
             end
+            
+            local jitter = Vector(random:random(1,(gridWidth*TILE_WIDTH)-pixelWidth), random:random(1,(gridHeight*TILE_WIDTH)-pixelHeight))
+            jitter = jitter - Vector(1,1)
+            offset = offset + jitter
+            
+            pos = Vector(roomX,roomY)
+            props[#props+1] = {quad=prop.quad, position = pos}
+            propSpriteBatch:add(prop.quad, ((pos.x-1)*TILE_WIDTH)+offset.x, ((pos.y-1)*TILE_WIDTH)+offset.y, angle, 1, 1)
+            count = count + 1
           end
-          
-          local jitter = Vector(random:random(1,(tw*TILE_WIDTH)-w), random:random(1,(th*TILE_WIDTH)-h))
-        
-          print(jitter)
-          
-          offset = offset
-          
-          pos = Vector(x,y)
-          props[#props+1] = {quad=prop.quad, position = pos}
-          propSpriteBatch:add(prop.quad, ((pos.x-1)*TILE_WIDTH)+offset.y, ((pos.y-1)*TILE_WIDTH)+offset.x, angle, 1, 1)
         end
       end
     end
