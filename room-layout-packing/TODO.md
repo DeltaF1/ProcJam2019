@@ -51,4 +51,17 @@ loop:
   - [x] Need to invert the tile algorithm
 - [ ] Suggestion from H: greenhouses!
 
+- Salvaging from wrecks
+  - Attach to your ship and tow them?
+  
+  - Go for EVA's and explore randomly generated wrecks
+  
+  - First episode of firefly
+  
+- Inspiration games
+  - Captain forever
+  - Duskers
+  - Starsector
+  - Heat signature
+
 # Bugfixes
