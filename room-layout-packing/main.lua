@@ -490,8 +490,6 @@ function generate(seed)
     end
   end
   
-  propSpriteBatch:setColor(1,1,1,0.5)
-  
   for i = 1, #rooms do
     local room = rooms[i]
     
