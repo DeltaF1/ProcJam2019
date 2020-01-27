@@ -15,7 +15,8 @@ function love.load(arg)
   -- Debug drawing/logging settings
   DEBUG = {
     seed = true,
-    mouse_pos = false
+    mouse_pos = true,
+    cur_room = true
   }
   
   love.graphics.setDefaultFilter("nearest", "nearest")
@@ -64,9 +65,9 @@ function love.load(arg)
     {quad = love.graphics.newQuad(24,0,16,9,propAtlas:getDimensions()), rotate=true, rooms={[5]=true}, frequency=10}
   }
   
-  hullSpritebatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
-  wallSpritebatch = love.graphics.newSpriteBatch(wallTileAtlas, 100)
-  roomTileSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
+  hullSpriteBatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
+  wallSpriteBatch = love.graphics.newSpriteBatch(wallTileAtlas, 100)
+  roomChromeSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
   greebleSpriteBatch = love.graphics.newSpriteBatch(greebleAtlas, 100)
   propSpriteBatch = love.graphics.newSpriteBatch(propAtlas, 100)
   
@@ -398,19 +399,27 @@ function generate(seed)
     end
   end
   
-  shipGeometry = Geometry:new()
+  shipGeometry = TileGrid:new()
   
-  for i,room in ipairs(rooms) do
-    shipGeometry:add(room.geometry, room.pos)
+  for id, room in ipairs(rooms) do
+--    room.id = id
+    local size = room.geometry:size()
+    for x = 1, size.x do
+      for y = 1, size.y do
+        if room.geometry:get(x, y) then
+          shipGeometry:set(x+room.pos.x, y+room.pos.y, id)
+        end
+      end
+    end
   end
     
   -- Drawing to spritebatches
   ----------------------------
 
-  hullSpritebatch:clear()
+  hullSpriteBatch:clear()
   greebleSpriteBatch:clear()
-  roomTileSpriteBatch:clear()
-  wallSpritebatch:clear()
+  roomChromeSpriteBatch:clear()
+  wallSpriteBatch:clear()
   propSpriteBatch:clear()
   
   -- TODO: Center greebles that are < TILE_WIDTH wide
@@ -460,11 +469,11 @@ function generate(seed)
       if invGeometry:get(x,y) then 
         local quad = tileset:getQuad(invGeometry,x,y)
         if quad then
-          hullSpritebatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
+          hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
         end
       else
         local quad = floorQuad
-        hullSpritebatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)
+        hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)
       end
     end
   end
@@ -473,16 +482,16 @@ function generate(seed)
   for i = 1,#rooms do
     local room = rooms[i]
     if room then
-      roomTileSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
-      wallSpritebatch:setColor(0.3, 0.3, 0.3)
+      roomChromeSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
+      wallSpriteBatch:setColor(0.3, 0.3, 0.3)
       local size = room.geometry:size()
       for x = 1, size.x do
         for y = 1, size.y do
           if room.geometry:get(x,y) then 
             local quad = tileset:getQuad(room.geometry,x,y)
             if quad then
-              roomTileSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
-              wallSpritebatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
+              roomChromeSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
+              wallSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
             end
           end
         end
@@ -694,9 +703,9 @@ function love.draw()
   
   love.graphics.draw(greebleSpriteBatch)
   
-  love.graphics.draw(hullSpritebatch)
-  love.graphics.draw(roomTileSpriteBatch)
-  love.graphics.draw(wallSpritebatch)
+  love.graphics.draw(hullSpriteBatch)
+  love.graphics.draw(roomChromeSpriteBatch)
+  love.graphics.draw(wallSpriteBatch)
   love.graphics.draw(propSpriteBatch)
   
   for i = 1, #rooms do
@@ -774,5 +783,13 @@ function love.draw()
     local shipSpace = (screenSpace / viewScale) - (center / (viewScale))
     love.graphics.setColor(1,1,1)
     love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace))
+  end
+  
+  if DEBUG.cur_room then
+    local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
+    local shipSpace = (screenSpace / viewScale) - (center / (viewScale))
+    local id = shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
+    love.graphics.setColor(1,1,1)
+    love.graphics.print("curRoom = "..tostring(id), 0, 20)
   end
 end

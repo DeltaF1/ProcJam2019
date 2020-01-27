@@ -222,6 +222,11 @@ function vector:floor()
   return new(math.floor(self.x), math.floor(self.y))
 end
 
+function vector:ceil()
+  return new(math.ceil(self.x), math.ceil(self.y))
+end
+
+
 -- the module
 return setmetatable({
 	new             = new,
