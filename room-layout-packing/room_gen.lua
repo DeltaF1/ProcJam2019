@@ -38,7 +38,7 @@ local function generate(room)
         local br = false
         for checkX = roomX, roomX+gridWidth-1 do
           for checkY = roomY, roomY+gridHeight-1 do
-            if not room.geometry:get(checkX, checkY) or propgeometry:get(checkX+room.pos.x,checkY+room.pos.y) then
+            if not room.geometry:get(checkX, checkY) or propgeometry:get(checkX,checkY) then
               br = true
             end
             if br then break end
@@ -48,8 +48,6 @@ local function generate(room)
         
         -- Placement is unobstructed!
         if not br then
-          roomX = roomX + room.pos.x
-          roomY = roomY + room.pos.y
           for setX = roomX, roomX+gridWidth-1 do
             for setY = roomY, roomY+gridHeight-1 do
               propgeometry:set(setX, setY, "p")
@@ -61,8 +59,7 @@ local function generate(room)
           offset = offset + jitter
           
           pos = Vector(roomX,roomY)
-          props[#props+1] = {quad=prop.quad, position = pos}
-          propSpriteBatch:add(prop.quad, ((pos.x-1)*TILE_WIDTH)+offset.x, ((pos.y-1)*TILE_WIDTH)+offset.y, angle, 1, 1)
+          props[#props+1] = {quad=prop.quad, position = pos, angle=angle, offset=offset, jitter=jitter, type=propType}
           count = count + 1
         end
       end
