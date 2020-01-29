@@ -230,8 +230,6 @@ function generate(seed)
     end
   end
   
-  function gen_filler() return {size = GRID_SIZE - Vector(2,2), colour={0.01,0.01,0.01}} end
-  
   -- Generate positions within each grid tile
   -- midx,midy are used to ensure alignment so that grids can collide
   local midx = math.floor(GRID_SIZE.x / 2)
