@@ -53,10 +53,11 @@ loop:
 
 - Salvaging from wrecks
   - Attach to your ship and tow them?
-  
   - Go for EVA's and explore randomly generated wrecks
-  
   - First episode of firefly
+  
+- Holes in hull
+- Can launch off the edge of a hole and glide to the other side
   
 - Inspiration games
   - Captain forever

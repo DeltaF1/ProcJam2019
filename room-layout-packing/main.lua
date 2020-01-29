@@ -228,6 +228,13 @@ function roomAdjacency(rooms, random)
               door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
               door.vec2 = door.vec1 + Vector(1,0)
             end
+
+            local upperLeft = door.vec1:min(door.vec2)
+            local bottomRight = door.vec1:max(door.vec2)
+
+            door.vec1 = upperLeft
+            door.vec2 = bottomRight
+
             adjmatrix[i][j] = door
           end
         end
@@ -498,6 +505,26 @@ function generate(seed)
   -- Rooms
   for i = 1,#rooms do
     local room = rooms[i]
+    local doorGeometry = {
+      get = function(self, x, y)
+        local pos = Vector.isvector(x) and x or Vector(x,y)
+        for j = 1, #rooms do
+          door = adjmatrix[i][j]
+          if door then
+            local vec1 = door.vec1 - room.pos + Vector(1,1)
+            if door.vec1.x == door.vec2.x then
+              if (pos == vec1 - Vector(1,0)) or (pos == vec1) then return "d" end
+            else
+              if (pos == vec1 - Vector(0,1)) or (pos == vec1) then return "d" end
+            end
+          end
+        end
+        return room.geometry:get(pos)
+      end
+    }
+    
+    setmetatable(doorGeometry, {__index=room.geometry})
+    
     if room then
       roomChromeSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
       wallSpriteBatch:setColor(0.3, 0.3, 0.3)
@@ -505,7 +532,7 @@ function generate(seed)
       for x = 1, size.x do
         for y = 1, size.y do
           if room.geometry:get(x,y) then 
-            local quad = tileset:getQuad(room.geometry,x,y)
+            local quad = tileset:getQuad(doorGeometry,x,y)
             if quad then
               roomChromeSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
               wallSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
@@ -790,9 +817,8 @@ function love.draw()
           r = 0
           drawPos = drawPos + Vector(0,-1)
         end
-        
+
         love.graphics.draw(door.open and door_open or door_closed, drawPos.x, drawPos.y, r)
-        --love.graphics.line(door.vec1.x*TILE_WIDTH,door.vec1.y*TILE_WIDTH,door.vec2.x*TILE_WIDTH,door.vec2.y*TILE_WIDTH)
       end
     end
   end
