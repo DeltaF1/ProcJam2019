@@ -783,7 +783,7 @@ function love.draw()
   love.graphics.pop()
 
   love.graphics.push()
-  love.graphics.translate(center.x, center.y)
+  love.graphics.translate(viewOffset.x, viewOffset.y)
   if DEBUG.tile_numbers then
     local size = invGeometry:size()
     for x = 1, size.x do
@@ -802,14 +802,14 @@ function love.draw()
   
   if DEBUG.mouse_pos then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (center / (viewScale))
+    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
     love.graphics.setColor(1,1,1)
     love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace))
   end
   
   if DEBUG.cur_room then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (center / (viewScale))
+    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
     local id = shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
     love.graphics.setColor(1,1,1)
     love.graphics.print("curRoom = "..tostring(id), 0, 20)
