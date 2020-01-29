@@ -1,6 +1,3 @@
-[submodule "tracery-spaceship\\lua-tracery"]
-	path = tracery-spaceship\\lua-tracery
-	url = https://github.com/DeltaF1/lua-tracery
 [submodule "tracery-spaceship/lua-tracery"]
 	path = tracery-spaceship/lua-tracery
 	url = https://github.com/deltaf1/lua-tracery.git
