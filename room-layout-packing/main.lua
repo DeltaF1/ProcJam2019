@@ -101,12 +101,12 @@ room_types = {
   {name = "Helm",               wrange={2,2}, hrange={2,2}, colour = {0.8,0.9,0.1,0.85}},
   {name = "Engine",             wrange={2,2}, hrange={2,3}, colour={0.58330589736158589, 0.024793900080875231, 0.83640388831262813}},
   -----------------------------  ROOM_PRESELECTED_OFFSET
-  {name = "Storage Bay",        wrange={3,6}, hrange={3,6}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504}},
+  {name = "Storage Bay",        wrange={3,9}, hrange={3,9}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504}},
   {name = "Mess Hall",          wrange = {2,3}, hrange={2,3}, colour = {0.3540978676870179, 0.47236376329459961, 0.67900487187065317}},
-  {name = "Sleeping quarters",  wrange = {1,2}, hrange={1,2}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407}},
-  {name = "Lounge",             wrange = {2,3}, hrange={2,3}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767}},
-  {name = "Corridor",         wrange={2,10}, hrange={1,2}, colour = {0.3,0.3,0.3}},
-  {name = "Corridor",         wrange={1,2}, hrange={2,10}, colour = {0.3,0.3,0.3}},
+  {name = "Sleeping quarters",  wrange = {1,2}, hrange={2,5}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407}},
+  {name = "Lounge",             wrange = {2,6}, hrange={2,6}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767}},
+  {name = "Corridor",         wrange={2,7}, hrange={1,2}, colour = {0.3,0.3,0.3}},
+  {name = "Corridor",         wrange={1,2}, hrange={2,7}, colour = {0.3,0.3,0.3}},
 }
 
 local maxw,maxh = 0,0
@@ -172,6 +172,133 @@ function print_adj()
   end
 end
 
+function new_room(type, random)
+  local template = room_types[type]
+  local room = {type=type}
+  
+  local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
+  if random:random() > 0.5 then
+    size.x, size.y = size.y, size.x
+  end
+  room.size = size
+  room.colour = template.colour
+  room.name = template.name
+  local geometry = {}
+  for i = 1, size.x do
+    geometry[i] = {}
+    for j = 1, size.y do
+      geometry[i][j] = type
+    end
+  end
+  room.geometry = Geometry:new(geometry)
+  return room
+end
+
+function roomAdjacency(rooms, random)
+  -- 2D array storing the adjacency matrix for each room in the ship
+  -- nil = no adjacency, a door object = linked by said door object
+  local adjmatrix = {}
+  
+  -- The list of room id's to merge together
+  local to_merge = {}
+  
+  for i = 1,#rooms do
+    if not adjmatrix[i] then
+      adjmatrix[i] = {}
+    end
+    for j = i+1,#rooms do
+      -- Don't check already checked rooms
+      if not adjmatrix[j] or not adjmatrix[j][i] then
+        local vec1, vec2 = adjacency(rooms[i], rooms[j])
+        if vec1 then
+          -- If two rooms are touching and are the same room type then merge them
+          if rooms[i].name == rooms[j].name then
+            if random:random(1,2) == 1 then
+              to_merge[#to_merge+1]={i,j}
+            else
+              to_merge[#to_merge+1]={j,i}
+            end
+          else
+            local door = {}
+            -- Generate a random 1-wide line across the intersection surface
+            if vec1.x == vec2.x then
+              door.vec1 = Vector(vec1.x, random:random(vec1.y, vec2.y-1))
+              door.vec2 = door.vec1 + Vector(0,1)
+            elseif vec1.y == vec2.y then
+              door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
+              door.vec2 = door.vec1 + Vector(1,0)
+            end
+            adjmatrix[i][j] = door
+          end
+        end
+      end
+    end
+  end
+  
+  return adjmatrix, to_merge
+end
+
+function mergeRooms(rooms, to_merge, adjmatrix)
+  for _, merge_pair in ipairs(to_merge) do
+    local i, j = unpack(merge_pair)
+    if i ~= j then
+      if i > j then i,j = j,i end
+      
+      local room1, room2 = rooms[i], rooms[j]
+      
+      assert(room1 and room2, "No nil merges")
+      
+      -- Merge the tile geometry of the two rooms together.
+      -- If merging the rooms would change the upper-left corner,
+      -- then update room1's position so that relative positions are preserved
+      local origin_shift = room1.geometry:add(room2.geometry, room2.pos - room1.pos)
+      room1.pos = room1.pos + origin_shift
+      
+      -- Update the room ids in the set of merge pairs since the array has shifted
+      for _, pair in ipairs(to_merge) do
+        if pair[1] > j then
+          pair[1] = pair[1] - 1 
+        elseif pair[1] == j then
+          pair[1] = i
+        end
+        
+        if pair[2] > j then
+          pair[2] = pair[2] - 1
+        elseif pair[2] == j then
+          pair[2] = i
+        end
+      end
+      
+      -- Merge the door set into room 1
+      adjmatrix[i] = sparse_merge(adjmatrix[i], adjmatrix[j], #rooms)
+      
+      for room=1,#rooms do
+        -- Merge the door set into room 1
+        adjmatrix[room][i] = adjmatrix[room][i] or adjmatrix[room][j]
+        
+        -- Delete the old row
+        for idx = j,#rooms do
+          adjmatrix[room][idx]=adjmatrix[room][idx+1]
+        end
+      end
+      
+      -- Delete the old column
+      table.remove(adjmatrix, j)
+      
+      -- Delete the old room
+      table.remove(rooms, j)
+    end
+  end
+  
+  -- Mirror the whole matrix along the diagonal
+  for i = 1,#adjmatrix do
+    for j = i,#adjmatrix do
+      adjmatrix[i][j] = adjmatrix[j][i] or adjmatrix[i][j]
+      adjmatrix[j][i] = adjmatrix[j][i] or adjmatrix[i][j]
+    end
+  end
+end
+
 function generate(seed)  
   -- THE GRID
   --
@@ -182,26 +309,10 @@ function generate(seed)
   
   local random = love.math.newRandomGenerator(seed)
   
-  local width,height = random:random(1, 4), random:random(2, 4)
+--  local width,height = random:random(1,4), random:random(2, 4)
+  local width,height = random:random(10,20), random:random(10, 20)
   
-  function gen_room(type)
-    local template = room_types[type]
-    local room = {type=type}
-    
-    local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
-    room.size = size
-    room.colour = template.colour
-    room.name = template.name
-    local geometry = {}
-    for i = 1, size.x do
-      geometry[i] = {}
-      for j = 1, size.y do
-        geometry[i][j] = type
-      end
-    end
-    room.geometry = Geometry:new(geometry)
-    return room
-  end
+
   
   rooms = {}
   
@@ -211,13 +322,13 @@ function generate(seed)
     repeat
       index = random:random(width*height)
     until rooms[index] == nil
-    rooms[index] = gen_room(i)
+    rooms[index] = new_room(i, random)
   end
   
   -- Fill the remaining space with other room types
   for i = 1,width*height do
     if not rooms[i] then
-      rooms[i] = gen_room(random:random(REQUIRED_ROOM_TYPE_OFFSET,#room_types))
+      rooms[i] = new_room(random:random(REQUIRED_ROOM_TYPE_OFFSET,#room_types), random)
     end
   end
   
@@ -292,42 +403,7 @@ function generate(seed)
     rooms[i].pos = rooms[i].pos - tl
   end
   
-  adjmatrix = {}
-  to_merge = {}
-  
-  -- Door generation
-  for i = 1,#rooms do
-    if not adjmatrix[i] then
-      adjmatrix[i] = {}
-    end
-    for j = i+1,#rooms do
-      -- Don't check already checked rooms
-      if not adjmatrix[j] or not adjmatrix[j][i] then
-        local vec1, vec2 = adjacency(rooms[i], rooms[j])
-        if vec1 then
-          -- If two rooms are touching and are the same room type then merge them
-          if rooms[i].name == rooms[j].name then
-            if random:random(1,2) == 1 then
-              to_merge[#to_merge+1]={i,j}
-            else
-              to_merge[#to_merge+1]={j,i}
-            end
-          else
-            local door = {}
-            -- Generate a random 1-wide line across the intersection surface
-            if vec1.x == vec2.x then
-              door.vec1 = Vector(vec1.x, random:random(vec1.y, vec2.y-1))
-              door.vec2 = door.vec1 + Vector(0,1)
-            elseif vec1.y == vec2.y then
-              door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
-              door.vec2 = door.vec1 + Vector(1,0)
-            end
-            adjmatrix[i][j] = door
-          end
-        end
-      end
-    end
-  end
+  adjmatrix, to_merge = roomAdjacency(rooms, random)
   
   -- FIXME: For debugging
   rects = {}
@@ -338,64 +414,7 @@ function generate(seed)
   
   -- NOW LEAVING THE GRID
   
-  for _, merge_pair in ipairs(to_merge) do
-    local i, j = unpack(merge_pair)
-    if i ~= j then
-      if i > j then i,j = j,i end
-      
-      local room1, room2 = rooms[i], rooms[j]
-      
-      assert(room1 and room2, "No nil merges")
-      
-      -- Merge the tile geometry of the two rooms together.
-      -- If merging the rooms would change the upper-left corner,
-      -- then update room1's position so that relative positions are preserved
-      local origin_shift = room1.geometry:add(room2.geometry, room2.pos - room1.pos)
-      room1.pos = room1.pos + origin_shift
-      
-      -- Update the room ids in the set of merge pairs since the array has shifted
-      for _, pair in ipairs(to_merge) do
-        if pair[1] > j then
-          pair[1] = pair[1] - 1 
-        elseif pair[1] == j then
-          pair[1] = i
-        end
-        
-        if pair[2] > j then
-          pair[2] = pair[2] - 1
-        elseif pair[2] == j then
-          pair[2] = i
-        end
-      end
-      
-      -- Merge the door set into room 1
-      adjmatrix[i] = sparse_merge(adjmatrix[i], adjmatrix[j], #rooms)
-      
-      for room=1,#rooms do
-        -- Merge the door set into room 1
-        adjmatrix[room][i] = adjmatrix[room][i] or adjmatrix[room][j]
-        
-        -- Delete the old row
-        for idx = j,#rooms do
-          adjmatrix[room][idx]=adjmatrix[room][idx+1]
-        end
-      end
-      
-      -- Delete the old column
-      table.remove(adjmatrix, j)
-      
-      -- Delete the old room
-      table.remove(rooms, j)
-    end
-  end
-  
-  -- Mirror the whole matrix along the diagonal
-  for i = 1,#adjmatrix do
-    for j = i,#adjmatrix do
-      adjmatrix[i][j] = adjmatrix[j][i] or adjmatrix[i][j]
-      adjmatrix[j][i] = adjmatrix[j][i] or adjmatrix[i][j]
-    end
-  end
+  mergeRooms(rooms, to_merge, adjmatrix)
   
   shipGeometry = TileGrid:new()
   
@@ -517,7 +536,6 @@ function generate(seed)
     end
   end
   
-    -- TODO: This should be part of ship generation, not calculated every frame
   local tl,br
   
   for i = 1,#rooms do
@@ -548,7 +566,6 @@ function generate(seed)
   end
   
   center = tl + (br-tl)/2
-  
 end
 
 local seed = 1573187721
@@ -578,41 +595,71 @@ function overlap(start1,end1,start2,end2)
   return math.max(0, math.min(end1, end2) - math.max(start1, start2))
 end
 
+function minDiff(arr1, arr2, dir, offset)
+  local mindiff
+  local offset = offset or 0
+  local offdir = dir == "x" and "y" or "x"
+  local overlaps = {}
+  for i = 1,#arr1 do
+    local current = arr1[i]
+    local currentPos = current.pos:clone()
+    currentPos[offdir] = currentPos[offdir] + offset
+    for j =1,#arr2 do
+      local opposite = arr2[j]
+      local oppositePos = opposite.pos:clone()
+      oppositePos[offdir] = oppositePos[offdir] + offset
+      local over = overlap(oppositePos[offdir], oppositePos[offdir]+opposite.size[offdir],
+                 currentPos[offdir], currentPos[offdir]+current.size[offdir])
+      local diff
+      if over > 0 then
+        diff = oppositePos[dir] - currentPos[dir] - current.size[dir]        
+      else
+        diff = 100
+      end
+
+      overlaps[diff] = (overlaps[diff] or 0) + over
+      if not mindiff then
+        mindiff = diff
+      else
+        mindiff = math.min(mindiff, diff)
+      end
+    end
+  end
+  return mindiff, overlaps
+end
+
 function merge(arr1, arr2, dir)
   dir = dir or "x"
   local offdir = dir == "x" and "y" or "x"
   
-  local mindiff
-  for i = 1,#arr1 do
-    local current = arr1[i]
+  local bestOffset = 0
+  local bestOverlap = 0
+  local bestDiff = 0
+  for offset = 0, 0 do
+    local mindiff, overlaps = minDiff(arr1, arr2, dir, offset)
     
-    for j =1,#arr2 do
-      local opposite = arr2[j]
-      if overlap(opposite.pos[offdir], opposite.pos[offdir]+opposite.size[offdir],
-                 current.pos[offdir], current.pos[offdir]+current.size[offdir]) > 0 then
-        local diff = opposite.pos[dir] - current.pos[dir] - current.size[dir]
-        if not mindiff then
-          mindiff = diff
-        else
-          mindiff = math.min(mindiff, diff)
-        end
-      end
+    if overlaps[mindiff] or 0 > bestOverlap then
+      bestOffset = offset
+      bestOverlap = overlaps[mindiff]
+      bestDiff = mindiff
     end
   end
   
   for i = 1, #arr2 do
-    arr2[i].pos[dir] = arr2[i].pos[dir] - mindiff
+    arr2[i].pos[dir] = arr2[i].pos[dir] - bestDiff
+    arr2[i].pos[offdir] = arr2[i].pos[offdir] + bestOffset
   end
 end
 
-function compress(arr, dir)
-  for i=1,#arr-1 do
-    merge({arr[i]}, {arr[i+1]}, dir)
-  end
-end
+--function compress(arr, dir)
+--  for i=1,#arr-1 do
+--    merge({arr[i]}, {arr[i+1]}, dir)
+--  end
+--end
 
 function compress(arr, dir)
   dir = dir or "x"
+  -- Start from the middle of the rects to avoid bias to one side or the other
   local middle = math.floor(#arr/2)
   for i = middle,1,-1 do
     local current = arr[i]
