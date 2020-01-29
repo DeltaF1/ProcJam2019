@@ -518,6 +518,39 @@ function generate(seed)
       propSpriteBatch:add(prop.quad, position.x, position.y, prop.angle, 1, 1)
     end
   end
+  
+    -- TODO: This should be part of ship generation, not calculated every frame
+  local tl,br
+  
+  for i = 1,#rooms do
+    if rooms[i] then
+      local current = rooms[i].pos
+      if tl then
+        if current.x < tl.x then
+          tl.x = current.x
+        end
+        if current.y < tl.y then
+          tl.y = current.y
+        end
+      else
+        tl = current:clone()
+      end
+      if br then
+        if current.x + rooms[i].size.x > br.x then
+          br.x = current.x + rooms[i].size.x 
+        end
+        
+        if current.y + rooms[i].size.y > br.y then
+          br.y = current.y + rooms[i].size.y
+        end
+      else
+        br = current + rooms[i].size
+      end
+    end
+  end
+  
+  center = tl + (br-tl)/2
+  
 end
 
 local seed = 1573187721
@@ -533,9 +566,9 @@ function love.keypressed(key)
     DEBUG.tile_numbers = not DEBUG.tile_numbers
   elseif key == "p" then
     DEBUG.prop_grid = not DEBUG.prop_grid
-  elseif key == "=" then
-    viewScale = viewScale + 0.2
-  elseif key == "-" then
+--  elseif key == "=" then
+--    viewScale = viewScale + 0.2
+--  elseif key == "-" then
     viewScale = viewScale - 0.2
   elseif key == "a" then
     print_adj()
@@ -633,13 +666,35 @@ function love.mousepressed(x,y,button)
 end
 
 ELAPSED_TIME = 0
+panOffset = Vector()
+PAN_SPEED = 150
+ZOOM_SPEED = 2
+viewScale = 3
 function love.update(dt)
   ELAPSED_TIME = ELAPSED_TIME + dt
+  
+  if love.keyboard.isDown("left") then
+    panOffset = panOffset + Vector(1, 0) * PAN_SPEED * dt * viewScale
+  end
+  if love.keyboard.isDown("right") then
+    panOffset = panOffset + Vector(-1, 0) * PAN_SPEED * dt * viewScale
+  end
+  if love.keyboard.isDown("up") then
+    panOffset = panOffset + Vector(0, 1) * PAN_SPEED * dt * viewScale
+  end
+  if love.keyboard.isDown("down") then
+    panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt * viewScale
+  end
+  if love.keyboard.isDown("=") then
+    viewScale = viewScale + ZOOM_SPEED * dt
+  end
+  if love.keyboard.isDown("-") then
+    viewScale = viewScale - ZOOM_SPEED * dt
+  end
 end
 
 STAR_SPEED = 10
 
-viewScale = 3
 
 function love.draw()
   love.graphics.setColor(1,1,1)
@@ -660,42 +715,9 @@ function love.draw()
   
   love.graphics.push()
   love.graphics.setPointSize(3)
-  
-  -- TODO: This should be part of ship generation, not calculated every frame
-  local tl,br
-  
-  for i = 1,#rooms do
-    if rooms[i] then
-      local current = rooms[i].pos
-      if tl then
-        if current.x < tl.x then
-          tl.x = current.x
-        end
-        if current.y < tl.y then
-          tl.y = current.y
-        end
-      else
-        tl = current:clone()
-      end
-      if br then
-        if current.x + rooms[i].size.x > br.x then
-          br.x = current.x + rooms[i].size.x 
-        end
-        
-        if current.y + rooms[i].size.y > br.y then
-          br.y = current.y + rooms[i].size.y
-        end
-      else
-        br = current + rooms[i].size
-      end
-    end
-  end
-  
-  local center = tl + (br-tl)/2
-  
-  center = center * TILE_WIDTH * viewScale
-  center = Vector(love.graphics.getWidth(), love.graphics.getHeight())/2 - center
-  viewOffset = center
+
+  viewOffset = Vector(love.graphics.getWidth(), love.graphics.getHeight())/2 - (center * TILE_WIDTH * viewScale)
+  viewOffset = viewOffset + panOffset
   love.graphics.translate(viewOffset.x, viewOffset.y)
   love.graphics.scale(viewScale)
   
