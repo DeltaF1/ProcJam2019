@@ -411,10 +411,12 @@ function generate(seed)
   
   tl = tl - Vector(1,1)
   
+  -- Offset rooms so that they are relative to the top left
   for i = 1, #rooms do
     rooms[i].pos = rooms[i].pos - tl
   end
   
+  -- Calculate adjacency matrix for all the rooms
   adjmatrix, to_merge = roomAdjacency(rooms, random)
   
   -- FIXME: For debugging
@@ -425,13 +427,16 @@ function generate(seed)
   end
   
   -- NOW LEAVING THE GRID
-  
+  --
+  -- Combine rooms that are adjacent and of the same type
   mergeRooms(rooms, to_merge, adjmatrix)
   
+  -- Store the geometry of the spaceship as a whole
+  --
+  -- Useful for hull generation, as well as a fast lookup for room collision detection
   shipGeometry = TileGrid:new()
   
   for id, room in ipairs(rooms) do
---    room.id = id
     local size = room.geometry:size()
     for x = 1, size.x do
       for y = 1, size.y do
@@ -444,16 +449,16 @@ function generate(seed)
     
   -- Drawing to spritebatches
   ----------------------------
-
   hullSpriteBatch:clear()
   greebleSpriteBatch:clear()
   roomChromeSpriteBatch:clear()
   wallSpriteBatch:clear()
   propSpriteBatch:clear()
   
-  -- TODO: Center greebles that are < TILE_WIDTH wide
-  -- Greebles
   
+  -- Greebles
+  -- TODO: Center greebles that are < TILE_WIDTH wide
+  -- TODO: DRY
   -- Add an offset of 1 to generate hull sprites outside of the limits
   local size = shipGeometry:size() + Vector(1,1)
   local hullWidth = 2
@@ -478,12 +483,13 @@ function generate(seed)
             greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadWidth, (y-1)*TILE_WIDTH+quadHeight-hullWidth, math.pi, 1, 1, 0, 0)
           end
         end
-      else
-        --tilesetSpriteBatch:add(tileQuads[1], x*16, y*16)
       end
     end
   end
   
+  -- Hull walls
+  
+  -- Make a geometry object that returns true for empty space
   invGeometry = {
     get = function(self, x,y)
       return not shipGeometry:get(x,y)
@@ -492,7 +498,7 @@ function generate(seed)
   setmetatable(invGeometry, {__index=shipGeometry})
   
   floorQuad = love.graphics.newQuad(80,122,16,16,96,128)
-  -- Walls
+  
   for x = 1, size.x do
     for y = 1, size.y do
       if invGeometry:get(x,y) then 
@@ -501,6 +507,7 @@ function generate(seed)
           hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
         end
       else
+        -- Generate the blank floor tiles
         local quad = floorQuad
         hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)
       end
@@ -508,8 +515,11 @@ function generate(seed)
   end
   
   -- Rooms
+  -- generate the "chrome" (room type highlights) and "walls" (the gray walls showing room boundaries
   for i = 1,#rooms do
     local room = rooms[i]
+    
+    -- A geoemtry object that treats doorways as an extra tile set to true
     local doorGeometry = {
       get = function(self, x, y)
         local pos = Vector.isvector(x) and x or Vector(x,y)
@@ -548,13 +558,16 @@ function generate(seed)
     end
   end
   
+  -- Props
   for i = 1, #rooms do
     local room = rooms[i]
     
     local size = room.geometry:size()
     
+    -- Generate a room layout in some fashion
     props = room_gen.generate(room)
     
+    -- Place each prop on the prop spritebatch layer
     for i = 1, #props do
       local prop = props[i]
       local position = prop.position
