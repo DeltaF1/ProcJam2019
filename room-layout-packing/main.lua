@@ -407,6 +407,8 @@ function generate(seed)
     end
   end
   
+  center = (br-tl)/2
+  
   tl = tl - Vector(1,1)
   
   for i = 1, #rooms do
@@ -565,37 +567,6 @@ function generate(seed)
       propSpriteBatch:add(prop.quad, position.x, position.y, prop.angle, 1, 1)
     end
   end
-  
-  local tl,br
-  
-  for i = 1,#rooms do
-    if rooms[i] then
-      local current = rooms[i].pos
-      if tl then
-        if current.x < tl.x then
-          tl.x = current.x
-        end
-        if current.y < tl.y then
-          tl.y = current.y
-        end
-      else
-        tl = current:clone()
-      end
-      if br then
-        if current.x + rooms[i].size.x > br.x then
-          br.x = current.x + rooms[i].size.x 
-        end
-        
-        if current.y + rooms[i].size.y > br.y then
-          br.y = current.y + rooms[i].size.y
-        end
-      else
-        br = current + rooms[i].size
-      end
-    end
-  end
-  
-  center = tl + (br-tl)/2
 end
 
 local seed = 1573187721
