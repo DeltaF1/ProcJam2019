@@ -306,22 +306,10 @@ function mergeRooms(rooms, to_merge, adjmatrix)
   end
 end
 
-function generate(seed)  
-  -- THE GRID
-  --
-  -- A DIGITAL FRONTIER
-  grid = {}
-  
-  seed = seed or os.time()
-  
-  local random = love.math.newRandomGenerator(seed)
-  
---  local width,height = random:random(1,4), random:random(2, 4)
+function genRoomsByCrunching(random)
   local width,height = random:random(10,20), random:random(10, 20)
   
-
-  
-  rooms = {}
+  local rooms = {}
   
   -- Generate one of each of the "required" rooms
   for i = 1, REQUIRED_ROOM_TYPE_OFFSET-1 do
@@ -374,6 +362,21 @@ function generate(seed)
     merge(grid[y],grid[y+1],"y")
   end
   
+  return rooms
+end
+
+function generate(seed)  
+  -- THE GRID
+  --
+  -- A DIGITAL FRONTIER
+  grid = {}
+  
+  seed = seed or os.time()
+  
+  local random = love.math.newRandomGenerator(seed)
+  
+  rooms = genRoomsByCrunching(random)
+
   -- Update room positions to be relative to the new bounding box
   local tl,br
 
