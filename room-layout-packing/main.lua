@@ -115,7 +115,7 @@ for i = 1,#room_types do
   maxh = math.max(maxh, room_types[i].hrange[2])
 end
 
-GRID_SIZE = Vector(maxw,maxh)
+MAX_ROOM_SIZE = Vector(maxw,maxh)
 
 -- Returns 2 vectors for the start and end of the adjacency
 function adjacency(obj1, obj2)
@@ -307,6 +307,10 @@ function mergeRooms(rooms, to_merge, adjmatrix)
 end
 
 function genRoomsByCrunching(random)
+  -- THE GRID
+  --
+  -- A DIGITAL FRONTIER
+  local grid = {}
   local width,height = random:random(10,20), random:random(10, 20)
   
   local rooms = {}
@@ -338,15 +342,15 @@ function genRoomsByCrunching(random)
   
   -- Generate positions within each grid tile
   -- midx,midy are used to ensure alignment so that grids can collide
-  local midx = math.floor(GRID_SIZE.x / 2)
-  local midy = math.floor(GRID_SIZE.y / 2)
+  local midx = math.floor(MAX_ROOM_SIZE.x / 2)
+  local midy = math.floor(MAX_ROOM_SIZE.y / 2)
   for y = 1,#grid do
     for x = 1, #grid[1] do
       local room = grid[y][x]
       -- This doesn't actually matter because they're getting crammed together anyway...
-      local xoff = random:random(math.max(0, midy-room.size.x), math.min(midx - 1, GRID_SIZE.x-room.size.x))
-      local yoff = random:random(math.max(0, midy-room.size.y), math.min(midy - 1, GRID_SIZE.y-room.size.y))
-      room.pos = Vector(x*GRID_SIZE.x + xoff, y*GRID_SIZE.y + yoff)
+      local xoff = random:random(math.max(0, midy-room.size.x), math.min(midx - 1, MAX_ROOM_SIZE.x-room.size.x))
+      local yoff = random:random(math.max(0, midy-room.size.y), math.min(midy - 1, MAX_ROOM_SIZE.y-room.size.y))
+      room.pos = Vector(x*MAX_ROOM_SIZE.x + xoff, y*MAX_ROOM_SIZE.y + yoff)
       
       room.colour = room.colour or {random:random(), random:random(), random:random()}
     end
@@ -365,17 +369,98 @@ function genRoomsByCrunching(random)
   return rooms
 end
 
+function genRoomsByTetris(random)
+  local initialWidth, numRooms = random:random(1,1), random:random(10,20)
+  
+  local row = {}
+  
+  local rooms = {}
+  
+  -- midx,midy are used to ensure alignment so that grids can collide
+  local midx = math.floor(MAX_ROOM_SIZE.x / 2)
+  local midy = math.floor(MAX_ROOM_SIZE.y / 2)
+  
+  local collisionView = Geometry:new()
+  
+  -- Generate a row of rooms to start with
+  local xOffset = 1
+  local lowestY = 1
+  for i = 1, initialWidth do
+    local room = new_room(random:random(1, #room_types), random)
+    
+    
+    local randY = random:random(math.max(1, midy-room.size.y), math.min(midy - 1, MAX_ROOM_SIZE.y-room.size.y))
+    lowestY = math.max(lowestY, randY)
+    room.pos = Vector(xOffset, randY)
+    
+    --Offset the rooms
+    xOffset = xOffset + room.size.x
+    
+    row[i] = room
+    rooms[i] = room
+    
+    collisionView:add(room.geometry, room.pos)
+  end
+  
+  function calcSurfaceArea(x,y,width, height)
+    local sum = 0
+    for checkY = y, y + height do
+      for checkX = x, x + width do
+        if collisionView:get(checkX, checkY) then
+          --collision!
+          return -1
+        end
+        if collisionView:get(checkX, checkY-1) then
+          sum = sum + 1
+        end
+        if collisionView:get(x-1, checkY) then sum = sum + 1 end
+        if collisionView:get(x+width+1, checkY) then sum = sum + 1 end
+      end
+    end
+    
+    return sum
+  end
+  
+  for i = 1, numRooms do
+    local room = new_room(random:random(1, #room_types), random)
+    local shipSize = collisionView:size()
+    local initialX = random:random(1, shipSize.x)
+    local x = initialX
+    local bestSurfaceArea = 0
+    local bestPos = Vector(x,shipSize.y+10)
+    -- Start from a random X coordinate and iterate mod gridwidth
+    for x = initialX, initialX + shipSize.x do
+      local modX = x % (shipSize.x)
+      for y = shipSize.y+1, 1, -1 do
+        local surfaceArea = calcSurfaceArea(modX,y,room.size:unpack())
+        -- This check is absolutely crucial
+        --
+        -- Are we trying to tetris, or are we trying to squeeze rooms in as tight as possible?
+        -- If trying to squeeze them in as tight as possible then omit this check
+        -- This is also means we need to to full collision checks, not just the front edge
+--         if surfaceArea == -1 then break end
+        -- 
+        if surfaceArea > bestSurfaceArea then
+          bestPos = Vector(modX,y)
+          bestSurfaceArea = surfaceArea
+        end
+      end
+    end
+    room.pos = bestPos - Vector(1,1)
+    rooms[#rooms+1]=room
+    collisionView:add(room.geometry, room.pos)
+  end
+  
+  return rooms
+end
+
 function generate(seed)  
-  -- THE GRID
-  --
-  -- A DIGITAL FRONTIER
-  grid = {}
   
   seed = seed or os.time()
   
   local random = love.math.newRandomGenerator(seed)
   
-  rooms = genRoomsByCrunching(random)
+  rooms = genRoomsByTetris(random)
 
   -- Update room positions to be relative to the new bounding box
   local tl,br
