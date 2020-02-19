@@ -404,17 +404,18 @@ function genRoomsByTetris(random)
   
   function calcSurfaceArea(x,y,width, height)
     local sum = 0
-    for checkY = y, y + height do
-      for checkX = x, x + width do
-        if collisionView:get(checkX, checkY) then
-          --collision!
-          return -1
+    for checkY = y-1, y+height do
+      for checkX = x-1, x+width do
+        if (checkX < x) or (checkX >= x+width) or (checkY < y) or (checkY >= y+height) then
+          if collisionView:get(checkX, checkY) then
+            sum = sum + 1
+          end
+        else 
+          if collisionView:get(checkX, checkY) then
+            --collision!
+            return -1
+          end
         end
-        if collisionView:get(checkX, checkY-1) then
-          sum = sum + 1
-        end
-        if collisionView:get(x-1, checkY) then sum = sum + 1 end
-        if collisionView:get(x+width+1, checkY) then sum = sum + 1 end
       end
     end
     
@@ -432,16 +433,16 @@ function genRoomsByTetris(random)
     for x = initialX, initialX + shipSize.x do
       local modX = x % (shipSize.x)
       for y = shipSize.y+1, 1, -1 do
-        local surfaceArea = calcSurfaceArea(modX,y,room.size:unpack())
+        local surfaceArea = calcSurfaceArea(modX+1,y,room.size:unpack())
         -- This check is absolutely crucial
         --
         -- Are we trying to tetris, or are we trying to squeeze rooms in as tight as possible?
         -- If trying to squeeze them in as tight as possible then omit this check
         -- This is also means we need to to full collision checks, not just the front edge
---         if surfaceArea == -1 then break end
+         if surfaceArea == -1 then break end
         -- 
         if surfaceArea > bestSurfaceArea then
-          bestPos = Vector(modX,y)
+          bestPos = Vector(modX+1,y)
           bestSurfaceArea = surfaceArea
         end
       end
