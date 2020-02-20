@@ -1,7 +1,7 @@
 local Vector = require "vector"
 local geometry = require "geometry"
 
-local room_gen = require "room_gen"
+local Ship = require("ship").Ship
 
 local TileGrid = geometry.TileGrid
 local Geometry = geometry.GeometryView
@@ -16,7 +16,6 @@ function love.load(arg)
   DEBUG = {
     seed = true,
     mouse_pos = true,
-    cur_room = true
   }
   
   love.graphics.setDefaultFilter("nearest", "nearest")
@@ -64,12 +63,6 @@ function love.load(arg)
     {quad = love.graphics.newQuad(48,21,30,10,propAtlas:getDimensions()), rotate=true, rooms={[3]=true}, frequency=10}, -- crate-long
     {quad = love.graphics.newQuad(24,0,16,9,propAtlas:getDimensions()), rotate=true, rooms={[5]=true}, frequency=10}
   }
-  
-  hullSpriteBatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
-  wallSpriteBatch = love.graphics.newSpriteBatch(wallTileAtlas, 100)
-  roomChromeSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
-  greebleSpriteBatch = love.graphics.newSpriteBatch(greebleAtlas, 100)
-  propSpriteBatch = love.graphics.newSpriteBatch(propAtlas, 100)
   
   stardir = Vector(-1, 0.01)
 
@@ -455,217 +448,22 @@ function genRoomsByTetris(random)
   return rooms
 end
 
-function generate(seed)  
+function generate(seed)
+  ships = {}
+  for i = 1, 20 do
+    local ship = Ship:new(seed)
   
-  seed = seed or os.time()
-  
-  local random = love.math.newRandomGenerator(seed)
-  
-  rooms = genRoomsByTetris(random)
-
-  -- Update room positions to be relative to the new bounding box
-  local tl,br
-
-  for i = 1,#rooms do
-    if rooms[i] then
-      local current = rooms[i].pos
-      if tl then
-        if current.x < tl.x then
-          tl.x = current.x
-        end
-        if current.y < tl.y then
-          tl.y = current.y
-        end
-      else
-        tl = current:clone()
-      end
-      if br then
-        if current.x + rooms[i].size.x > br.x then
-          br.x = current.x + rooms[i].size.x 
-        end
-        
-        if current.y + rooms[i].size.y > br.y then
-          br.y = current.y + rooms[i].size.y
-        end
-      else
-        br = current + rooms[i].size
-      end
-    end
-  end
-  
-  center = (br-tl)/2
-  
-  tl = tl - Vector(1,1)
-  
-  -- Offset rooms so that they are relative to the top left
-  for i = 1, #rooms do
-    rooms[i].pos = rooms[i].pos - tl
-  end
-  
-  -- Calculate adjacency matrix for all the rooms
-  adjmatrix, to_merge = roomAdjacency(rooms, random)
-  
-  -- FIXME: For debugging
-  rects = {}
-  
-  for i = 1, #rooms do
-    rects[#rects+1] = {rooms[i].pos:clone(), rooms[i].size:clone()}
-  end
-  
-  -- NOW LEAVING THE GRID
-  --
-  -- Combine rooms that are adjacent and of the same type
-  mergeRooms(rooms, to_merge, adjmatrix)
-  
-  -- Store the geometry of the spaceship as a whole
-  --
-  -- Useful for hull generation, as well as a fast lookup for room collision detection
-  shipGeometry = TileGrid:new()
-  
-  for id, room in ipairs(rooms) do
-    local size = room.geometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        if room.geometry:get(x, y) then
-          shipGeometry:set(x+room.pos.x, y+room.pos.y, id)
-        end
-      end
-    end
-  end
+    ship:generate()
     
-  -- Drawing to spritebatches
-  ----------------------------
-  hullSpriteBatch:clear()
-  greebleSpriteBatch:clear()
-  roomChromeSpriteBatch:clear()
-  wallSpriteBatch:clear()
-  propSpriteBatch:clear()
-  
-  
-  -- Greebles
-  -- TODO: Center greebles that are < TILE_WIDTH wide
-  -- TODO: DRY
-  -- Add an offset of 1 to generate hull sprites outside of the limits
-  local size = shipGeometry:size() + Vector(1,1)
-  local hullWidth = 2
-  for x = 1,size.x+1 do
-    for y = 1,size.y+1 do
-      if not shipGeometry:get(x,y) then
-        --empty space for greebles
-        if random:random() > 0.2 then
-          local quad = greebleQuads[random:random(#greebleQuads)]
-          local _,_,quadWidth,quadHeight = quad:getViewport()
-          if shipGeometry:get(x+1,y) then
-            -- Pointing left
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH)-hullWidth, (y-1)*TILE_WIDTH+quadWidth, -math.pi/2, 1, 1, 0, 0)
-          elseif shipGeometry:get(x-1,y) then
-            -- Pointing right
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadHeight+hullWidth, (y-1)*TILE_WIDTH, math.pi/2, 1, 1, 0, 0)
-          elseif shipGeometry:get(x,y+1) then
-            -- Pointing up
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH)+hullWidth, 0, 1, 1, 0, 0)
-          elseif shipGeometry:get(x,y-1) then
-            -- Pointing down
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadWidth, (y-1)*TILE_WIDTH+quadHeight-hullWidth, math.pi, 1, 1, 0, 0)
-          end
-        end
-      end
-    end
+    ship.pos = Vector(love.math.random(-1000, 1000), love.math.random(-1000, 1000))
+    ship.vel = Vector(love.math.random(), love.math.random()) * 70
+    
+    ships[i] = ship
+    
+    seed = seed + 1
   end
   
-  -- Hull walls
-  
-  -- Make a geometry object that returns true for empty space
-  invGeometry = {
-    get = function(self, x,y)
-      return not shipGeometry:get(x,y)
-    end
-  }
-  setmetatable(invGeometry, {__index=shipGeometry})
-  
-  floorQuad = love.graphics.newQuad(80,122,16,16,96,128)
-  
-  for x = 1, size.x do
-    for y = 1, size.y do
-      if invGeometry:get(x,y) then 
-        local quad = tileset:getQuad(invGeometry,x,y)
-        if quad then
-          hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
-        end
-      else
-        -- Generate the blank floor tiles
-        local quad = floorQuad
-        hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)
-      end
-    end
-  end
-  
-  -- Rooms
-  -- generate the "chrome" (room type highlights) and "walls" (the gray walls showing room boundaries
-  for i = 1,#rooms do
-    local room = rooms[i]
-    
-    -- A geoemtry object that treats doorways as an extra tile set to true
-    local doorGeometry = {
-      get = function(self, x, y)
-        local pos = Vector.isvector(x) and x or Vector(x,y)
-        for j = 1, #rooms do
-          door = adjmatrix[i][j]
-          if door then
-            local vec1 = door.vec1 - room.pos + Vector(1,1)
-            if door.vec1.x == door.vec2.x then
-              if (pos == vec1 - Vector(1,0)) or (pos == vec1) then return "d" end
-            else
-              if (pos == vec1 - Vector(0,1)) or (pos == vec1) then return "d" end
-            end
-          end
-        end
-        return room.geometry:get(pos)
-      end
-    }
-    
-    setmetatable(doorGeometry, {__index=room.geometry})
-    
-    if room then
-      roomChromeSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
-      wallSpriteBatch:setColor(0.3, 0.3, 0.3)
-      local size = room.geometry:size()
-      for x = 1, size.x do
-        for y = 1, size.y do
-          if room.geometry:get(x,y) then 
-            local quad = tileset:getQuad(doorGeometry,x,y)
-            if quad then
-              roomChromeSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
-              wallSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
-            end
-          end
-        end
-      end
-    end
-  end
-  
-  -- Props
-  for i = 1, #rooms do
-    local room = rooms[i]
-    
-    local size = room.geometry:size()
-    
-    -- Generate a room layout in some fashion
-    props = room_gen.generate(room)
-    
-    -- Place each prop on the prop spritebatch layer
-    for i = 1, #props do
-      local prop = props[i]
-      local position = prop.position
-      position = position + room.pos - Vector(1,1)
-      
-      position = position * TILE_WIDTH
-      
-      position = position + prop.offset
-      
-      propSpriteBatch:add(prop.quad, position.x, position.y, prop.angle, 1, 1)
-    end
-  end
+  panOffset = -ships[1].center * TILE_WIDTH
 end
 
 local seed = 1573187721
@@ -681,12 +479,6 @@ function love.keypressed(key)
     DEBUG.tile_numbers = not DEBUG.tile_numbers
   elseif key == "p" then
     DEBUG.prop_grid = not DEBUG.prop_grid
---  elseif key == "=" then
---    viewScale = viewScale + 0.2
---  elseif key == "-" then
-    viewScale = viewScale - 0.2
-  elseif key == "a" then
-    print_adj()
   end
 end
  
@@ -791,8 +583,8 @@ function love.mousepressed(x,y,button)
   local screenSpace = Vector(x,y)
   
   -- Position in ship pixel space
-  local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
-  
+  local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
+  local adjmatrix = ships[1].adjmatrix
   local door
   local br = false
   for i = 1, #adjmatrix do
@@ -813,6 +605,7 @@ end
 ELAPSED_TIME = 0
 panOffset = Vector()
 PAN_SPEED = 150
+ENGINE_SPEED = 50
 ZOOM_SPEED = 2
 viewScale = 3
 function love.update(dt)
@@ -830,15 +623,33 @@ function love.update(dt)
   if love.keyboard.isDown("down") then
     panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt * viewScale
   end
+  
+  if love.keyboard.isDown("w") then
+    ships[1].vel = ships[1].vel + Vector(0, 1) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("s") then
+    ships[1].vel = ships[1].vel + Vector(0, -1) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("a") then
+    ships[1].vel = ships[1].vel + Vector(1, 0) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("d") then
+    ships[1].vel = ships[1].vel + Vector(-1, 0) * ENGINE_SPEED * dt
+  end
+  
   if love.keyboard.isDown("=") then
     viewScale = viewScale + ZOOM_SPEED * dt
   end
   if love.keyboard.isDown("-") then
     viewScale = viewScale - ZOOM_SPEED * dt
   end
+  
+  for i = 1, #ships do
+    ships[i].pos = ships[i].pos + ships[i].vel * dt
+  end
 end
 
-STAR_SPEED = 10
+STAR_SPEED = 1/10
 
 
 function love.draw()
@@ -848,9 +659,8 @@ function love.draw()
     for i = 1, #stars do
       -- TODO: replace with points(unpack(stars)) and love.translate
       local star = stars[i]
-      local drawstar = star + (stardir * ELAPSED_TIME * n * STAR_SPEED)
+      local drawstar = star + ships[1].pos * STAR_SPEED--(stardir * ELAPSED_TIME * n * STAR_SPEED)
       drawstar = drawstar + Vector(1,1) * n * 12345
-      
       drawstar.x = drawstar.x % (WINDOW_WIDTH + 20) - 20
       drawstar.y = drawstar.y % (WINDOW_HEIGHT + 20) - 20
       
@@ -860,83 +670,24 @@ function love.draw()
   
   love.graphics.push()
   love.graphics.setPointSize(3)
-
-  viewOffset = Vector(love.graphics.getWidth(), love.graphics.getHeight())/2 - (center * TILE_WIDTH * viewScale)
-  viewOffset = viewOffset + panOffset
-  love.graphics.translate(viewOffset.x, viewOffset.y)
+  
+  local viewOffset = ships[1].pos + panOffset
+  
+  love.graphics.translate(love.graphics.getWidth()/2, love.graphics.getHeight()/2)
+  
   love.graphics.scale(viewScale)
   
-  love.graphics.setColor(1,1,1)
-  
-  love.graphics.draw(greebleSpriteBatch)
-  
-  love.graphics.draw(hullSpriteBatch)
-  love.graphics.draw(roomChromeSpriteBatch)
-  love.graphics.draw(wallSpriteBatch)
-  love.graphics.draw(propSpriteBatch)
-  
-  for i = 1, #rooms do
-    for j = i, #rooms do
-      local door = adjmatrix[i][j]
-      if door then
-        local vec1, vec2 = door.vec1, door.vec2
-        local upperLeft = vec1:min(vec2)
-        local bottomRight = vec1:max(vec2)
-        local drawPos = upperLeft*TILE_WIDTH
-        if vec1.x == vec2.x then
-          r = math.pi/2
-          drawPos = drawPos + Vector(1,0)
-        else
-          r = 0
-          drawPos = drawPos + Vector(0,-1)
-        end
-
-        love.graphics.draw(door.open and door_open or door_closed, drawPos.x, drawPos.y, r)
-      end
-    end
-  end
-  
-  if DEBUG.rect_bounds then
-    love.graphics.setColor(1,0,0)
-    for i = 1,#rects do
-      local rect = rects[i]
-      love.graphics.rectangle("line", rect[1].x*TILE_WIDTH, rect[1].y*TILE_WIDTH, rect[2].x*TILE_WIDTH, rect[2].y*TILE_WIDTH)
-    end
-  end
-  
-  if DEBUG.room_bounds then
-    for i = 1,#rooms do
-      local room = rooms[i]
-      love.graphics.setColor(room.colour)
-      love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
-    end
-  end
-  
-  if DEBUG.prop_grid then
-    love.graphics.setColor(1,1,1,0.3)
-    local size = shipGeometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        if propgeometry:get(x,y) then
-          love.graphics.rectangle("fill", (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH, TILE_WIDTH, TILE_WIDTH)
-        end
-      end
-    end
-  end
-  
-  love.graphics.pop()
-
-  love.graphics.push()
   love.graphics.translate(viewOffset.x, viewOffset.y)
-  if DEBUG.tile_numbers then
-    local size = invGeometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        local number = tileset:getTileIndex(invGeometry, x, y)
-        love.graphics.print(number, (x-1)*viewScale*TILE_WIDTH, (y-1)*viewScale*TILE_WIDTH)
-      end
-    end
+  
+  for i = math.floor(#ships/2), math.floor(#ships/2)+#ships do
+    i = (i % #ships) + 1
+    local ship = ships[i]
+    love.graphics.push()
+    love.graphics.translate((-ship.pos):unpack())
+    ship:draw()
+    love.graphics.pop()
   end
+
   love.graphics.pop()
   
   if DEBUG.seed then
@@ -946,15 +697,15 @@ function love.draw()
   
   if DEBUG.mouse_pos then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
+    local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
     love.graphics.setColor(1,1,1)
     love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace))
   end
   
   if DEBUG.cur_room then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
-    local id = shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
+    local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
+    local id = ship.shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
     love.graphics.setColor(1,1,1)
     love.graphics.print("curRoom = "..tostring(id), 0, 20)
   end
