@@ -658,10 +658,10 @@ function love.draw()
     for i = 1, #stars do
       -- TODO: replace with points(unpack(stars)) and love.translate
       local star = stars[i]
-      local drawstar = star + ships[1].pos * STAR_SPEED--(stardir * ELAPSED_TIME * n * STAR_SPEED)
+      local drawstar = star + ships[1].pos * STAR_SPEED * n --(stardir * ELAPSED_TIME * n * STAR_SPEED)
       drawstar = drawstar + Vector(1,1) * n * 12345
-      drawstar.x = drawstar.x % (WINDOW_WIDTH + 20) - 20
-      drawstar.y = drawstar.y % (WINDOW_HEIGHT + 20) - 20
+      drawstar.x = (drawstar.x % (love.graphics.getWidth() + 20)) - 20
+      drawstar.y = (drawstar.y % (love.graphics.getHeight() + 20)) - 20
       
       love.graphics.points(drawstar.x, drawstar.y)
     end
