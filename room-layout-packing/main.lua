@@ -21,7 +21,6 @@ function love.load(arg)
   love.graphics.setDefaultFilter("nearest", "nearest")
   WINDOW_WIDTH = 1024
   WINDOW_HEIGHT = 700
-  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   
   hullTileAtlas = love.graphics.newImage("tileset_inv.png")
   wallTileAtlas = love.graphics.newImage("room_0px.png")
