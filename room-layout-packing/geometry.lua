@@ -117,6 +117,19 @@ function GeometryView:size()
   return size
 end
 
+function GeometryView.print(view)
+  local size = view:size()
+  local s = ""
+  for y = 0, size.y do
+    local row = ""
+    for x = 0, size.x do
+      row = row .. tostring(view:get(x,y) or " ")
+    end
+    s = s .. row .. "\n"
+  end
+  return s
+end
+
 --local function _set(geometry, pos, value)
 --  if getmetatable(geometry) == GeometryView then
 --    return geometry:set(x,y,value)

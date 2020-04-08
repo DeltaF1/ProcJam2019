@@ -204,10 +204,20 @@ function Ship:draw()
   end
   
   if DEBUG.room_bounds then
-    for i = 1,#rooms do
-      local room = rooms[i]
+    for i = 1,#self.rooms do
+      local room = self.rooms[i]
       love.graphics.setColor(room.colour)
       love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
+    end
+  end
+  
+  if DEBUG.generator_metadata then
+    love.graphics.setColor(1,0,0)
+    for i = 1, #self.rooms do
+      local room = self.rooms[i]
+      local meta = room.generator_metadata or {}
+      love.graphics.setColor(1,0,0)
+      love.graphics.print(meta.bestArea or "N/A", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH)
     end
   end
   
@@ -268,7 +278,7 @@ local function centerRooms(rooms)
 end
 
 function Ship:generate(seed)
-  self.rooms = genRoomsByTetris(self.random)
+  self.rooms = genRoomsBy4DTetris(self.random)
   
   self.center = centerRooms(self.rooms)
   

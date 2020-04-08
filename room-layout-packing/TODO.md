@@ -46,7 +46,7 @@ loop:
   - [x] Crates
   - [x] Consoles
   - Chairs
-- People walking around
+- [ ] People walking around
 - [x] Draw the walls on the outside instead so that rooms tiles are easier
   - [x] Need to invert the tile algorithm
 - [ ] Suggestion from H: greenhouses!

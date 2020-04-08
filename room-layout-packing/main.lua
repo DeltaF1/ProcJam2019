@@ -404,7 +404,7 @@ function genRoomsByTetris(random)
   function calcSurfaceArea(x,y,width, height)
     local sum = 0
     for checkY = y-1, y+height do
-      for checkX = x-1, x+width do
+      for checkX = x+width, x-1, -1 do
         if (checkX < x) or (checkX >= x+width) or (checkY < y) or (checkY >= y+height) then
           if collisionView:get(checkX, checkY) then
             sum = sum + 1
@@ -412,7 +412,7 @@ function genRoomsByTetris(random)
         else 
           if collisionView:get(checkX, checkY) then
             --collision!
-            return -1
+            return -1, checkX, checkY
           end
         end
       end
@@ -428,21 +428,27 @@ function genRoomsByTetris(random)
     local x = initialX
     local bestSurfaceArea = 0
     local bestPos = Vector(x,shipSize.y+10)
+    local skipTo = 0
     -- Start from a random X coordinate and iterate mod gridwidth
     for x = initialX, initialX + shipSize.x do
-      local modX = x % (shipSize.x)
-      for y = shipSize.y+1, 1, -1 do
-        local surfaceArea = calcSurfaceArea(modX+1,y,room.size:unpack())
-        -- This check is absolutely crucial
-        --
-        -- Are we trying to tetris, or are we trying to squeeze rooms in as tight as possible?
-        -- If trying to squeeze them in as tight as possible then omit this check
-        -- This is also means we need to to full collision checks, not just the front edge
-         if surfaceArea == -1 then break end
-        -- 
-        if surfaceArea > bestSurfaceArea then
-          bestPos = Vector(modX+1,y)
-          bestSurfaceArea = surfaceArea
+      if x >= skipTo then
+        local modX = x % (shipSize.x) + 1
+        for y = shipSize.y+1, 1, -1 do
+          local surfaceArea, checkX, checkY = calcSurfaceArea(modX,y,room.size:unpack())
+          -- This check is absolutely crucial
+          --
+          -- Are we trying to tetris, or are we trying to squeeze rooms in as tight as possible?
+          -- If trying to squeeze them in as tight as possible then omit this check
+          -- This is also means we need to to full collision checks, not just the front edge
+          if surfaceArea == -1 then
+            skipTo = checkX
+            break
+          end
+          -- 
+          if surfaceArea > bestSurfaceArea then
+            bestPos = Vector(modX,y)
+            bestSurfaceArea = surfaceArea
+          end
         end
       end
     end
@@ -451,6 +457,173 @@ function genRoomsByTetris(random)
     collisionView:add(room.geometry, room.pos)
   end
   
+  return rooms
+end
+
+
+
+function genRoomsBy4DTetris(random)
+  local rooms = {}
+  
+  local collisionView = Geometry:new()
+  
+  local left = {len=0,start=0}
+  local right = {len=0,start=0}
+  local top = {len=0,start=0}
+  local bot = {len=0,start=0}
+  
+  local bounds = {
+    left = left,
+    right = right,
+    top = top,
+    bot = bot
+  }
+  
+  local collisionOffset = Vector(-1,-1)
+  local function calcSurfaceArea(x,y,width, height)
+    x = x - collisionOffset.x
+    y = y - collisionOffset.y
+    local sum = 0
+    
+    for checkY = y-1, y+height do
+      if collisionView:get(x-1, checkY) then
+        sum = sum + 1
+      end
+      if collisionView:get(x+width, checkY) then
+        sum = sum + 1
+      end
+    end
+    
+    for checkX = x, x+width-1 do
+      if collisionView:get(checkX, y-1) then
+        sum = sum + 1
+      end
+      if collisionView:get(checkX, y+width) then
+        sum = sum + 1
+      end
+    end
+    
+    return sum
+  end
+  
+  local function addToBounds(tbl, idx, val, min_max)
+    if not tbl[idx] then
+      tbl[idx] = val
+      tbl.len = tbl.len + 1
+      if idx < tbl.start then
+        tbl.start = idx
+      end
+    else
+      tbl[idx] = math[min_max](tbl[idx], val)
+    end
+  end
+  
+  local function addRoom(room, pos)
+    if not pos then
+      print("uh oh")
+    end
+    room.pos = pos
+    for x = room.pos.x, room.pos.x + room.size.x - 1 do
+      addToBounds(top, x, room.pos.y, "min")
+      addToBounds(bot, x, room.pos.y + room.size.y, "max")
+    end
+    
+    for y = room.pos.y, room.pos.y + room.size.y - 1 do
+      addToBounds(left, y, room.pos.x, "min")
+      addToBounds(right, y, room.pos.x + room.size.x, "max")
+    end
+    
+    rooms[#rooms+1] = room
+    collisionOffset = collisionOffset + collisionView:add(room.geometry, room.pos)
+  end
+  
+  local num_rooms = random:random(20,50)
+  local seedRoom = new_room(random:random(1, #room_types), random)
+  seedRoom.generator_metadata = {
+    }
+  addRoom(seedRoom, Vector())
+  
+  local skipped = 0
+  for i = 1, num_rooms do
+    local room = new_room(random:random(1, #room_types), random)
+    
+    local dirIndex = random:random(1,4)
+    
+    if i < num_rooms * (3/4) then
+      dirIndex = random:random(1,2)
+    else
+      dirIndex = random:random(3,4)
+    end
+    
+    local direction = ({"left", "right", "top", "bot"})[dirIndex]
+    local xy = ({"y", "y", "x", "x"})[dirIndex]
+    local obstacleSign = ({1,-1,1,-1})[dirIndex]
+    local posOffset = ({Vector(-room.size.x, 0), Vector(), Vector(0, -room.size.y), Vector()})[dirIndex]
+    
+    local pos
+    
+    local skipTo = 0
+    local bound = bounds[direction]
+    local storeX
+    local randomOffset = random:random(bound.start, bound.start + bound.len - 1)
+    
+    local bestArea, bestPos
+    bestArea = 0
+    
+    for x = 0, bound.len do
+      x = ((x + randomOffset) % bound.len) + bound.start
+      storeX = x
+      if true or x >= skipTo then
+        local placementWorks = true
+        for check = x, x+room.size[xy]-1 do
+          -- Calculates the directional shift between two edges of the wall
+          -- A negative shift implies an outcropping == an obstacle in the way of trying to nestle
+          -- this room into a gap in the wall.
+          if not bound[x] then
+            print()
+          end
+          if obstacleSign * ((bound[check] or 0) - bound[x]) < 0 then
+            -- The gap isn't big enough to contain this room!
+            --skipTo = check
+            if skipTo == bound.start + bound.len - 1 then
+              print()
+            end
+            placementWorks = false
+            break
+          end
+        end
+
+        if placementWorks then
+          local pos
+          if dirIndex < 3 then
+            pos = Vector(bound[x], x)
+          else
+            pos = Vector(x, bound[x])
+          end
+          pos = pos + posOffset
+          local surface = calcSurfaceArea(pos.x, pos.y, room.size.x, room.size.y)
+          if surface > 0 then
+            if surface > bestArea then
+              bestArea = surface
+              bestPos = pos
+            end
+          end
+        end
+      end
+    end
+    if not bestPos then
+    end
+    if bestPos then
+      room.generator_metadata = {
+        direction = direction,
+        bestArea = bestArea
+      }
+      addRoom(room, bestPos)
+    else
+      skipped = skipped + 1
+    end
+  end
+  print("skipped "..tostring(skipped).." rooms")
   return rooms
 end
 
