@@ -589,10 +589,11 @@ function love.mousepressed(x,y,button)
   local screenSpace = Vector(x,y)
   
   -- Position in ship pixel space
-  local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
+  local shipSpace = screenToShipSpace(screenSpace, ships[1])
   local adjmatrix = ships[1].adjmatrix
   local door
   local br = false
+  local adjmatrix = ships[1].adjmatrix
   for i = 1, #adjmatrix do
     for j = i, #adjmatrix do
       door = adjmatrix[i][j]
@@ -610,24 +611,24 @@ end
 
 ELAPSED_TIME = 0
 panOffset = Vector()
-PAN_SPEED = 150
+PAN_SPEED = 300
 ENGINE_SPEED = 50
-ZOOM_SPEED = 2
+ZOOM_SPEED = 10
 viewScale = 3
 function love.update(dt)
   ELAPSED_TIME = ELAPSED_TIME + dt
   
   if love.keyboard.isDown("left") then
-    panOffset = panOffset + Vector(1, 0) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(1, 0) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("right") then
-    panOffset = panOffset + Vector(-1, 0) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(-1, 0) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("up") then
-    panOffset = panOffset + Vector(0, 1) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(0, 1) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("down") then
-    panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt / viewScale
   end
   
   if love.keyboard.isDown("w") then
@@ -644,11 +645,13 @@ function love.update(dt)
   end
   
   if love.keyboard.isDown("=") then
-    viewScale = viewScale + ZOOM_SPEED * dt
+    viewScale = viewScale + (viewScale * ZOOM_SPEED * dt)
   end
   if love.keyboard.isDown("-") then
-    viewScale = viewScale - ZOOM_SPEED * dt
+    viewScale = viewScale - (viewScale * ZOOM_SPEED * dt)
   end
+  
+  viewScale = math.max(0, viewScale)
   
   for i = 1, #ships do
     ships[i].pos = ships[i].pos + ships[i].vel * dt
@@ -657,6 +660,9 @@ end
 
 STAR_SPEED = 1/10
 
+function screenToShipSpace(screenSpace, ship)
+    return ((screenSpace - Vector(love.graphics.getWidth()/2, love.graphics.getHeight()/2)) / viewScale) - panOffset
+end
 
 function love.draw()
   love.graphics.setColor(1,1,1)
@@ -703,15 +709,15 @@ function love.draw()
   
   if DEBUG.mouse_pos then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
+    local shipSpace = screenToShipSpace(screenSpace, ships[1])
     love.graphics.setColor(1,1,1)
-    love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace))
+    love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace)..", panOffset = "..tostring(panOffset))
   end
   
   if DEBUG.cur_room then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (panOffset / (viewScale))
-    local id = ship.shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
+    local shipSpace = screenToShipSpace(screenSpace, ships[1])
+    local id = ships[1].shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
     love.graphics.setColor(1,1,1)
     love.graphics.print("curRoom = "..tostring(id), 0, 20)
   end
