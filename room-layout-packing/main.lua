@@ -75,6 +75,13 @@ function love.load(arg)
   love.keypressed("space")
 end
 
+function love.resize(w,h)
+  stars = {}
+  for i = 1, 200 do
+    stars[i] = Vector(love.math.random(1,w), love.math.random(1,h))
+  end
+end
+
 function index2xy(index, width)
   local x = (index-1) % width + 1
   local y = math.floor((index-1)/width) + 1
@@ -655,11 +662,11 @@ function love.draw()
   love.graphics.setColor(1,1,1)
   for n = 1,3 do
     love.graphics.setPointSize(n)
-    for i = 1, #stars do
+    for i = n, #stars, 3  do
       -- TODO: replace with points(unpack(stars)) and love.translate
       local star = stars[i]
       local drawstar = star + ships[1].pos * STAR_SPEED * n --(stardir * ELAPSED_TIME * n * STAR_SPEED)
-      drawstar = drawstar + Vector(1,1) * n * 12345
+--      drawstar = drawstar + Vector(1,1) * n
       drawstar.x = (drawstar.x % (love.graphics.getWidth() + 20)) - 20
       drawstar.y = (drawstar.y % (love.graphics.getHeight() + 20)) - 20
       
