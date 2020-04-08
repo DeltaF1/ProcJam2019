@@ -646,18 +646,22 @@ function generate(seed)
 end
 
 local seed = 1573187721
+local DEBUG_KEYBIND = {
+  
+  r="room_bounds",
+  t="rect_bounds",
+  n="tile_numbers",
+  m="generator_metadata",
+  p="prop_grid",
+  c="cur_room"
+}
+  
 function love.keypressed(key)
   if key == "space" then
     generate(seed)
     seed = seed + 1
-  elseif key == "r" then
-    DEBUG.room_bounds = not DEBUG.room_bounds
-  elseif key == "t" then
-    DEBUG.rect_bounds = not DEBUG.rect_bounds
-  elseif key == "n" then
-    DEBUG.tile_numbers = not DEBUG.tile_numbers
-  elseif key == "p" then
-    DEBUG.prop_grid = not DEBUG.prop_grid
+  elseif DEBUG_KEYBIND[key] then
+    DEBUG[DEBUG_KEYBIND[key]] = not DEBUG[DEBUG_KEYBIND[key]]
   end
 end
  
