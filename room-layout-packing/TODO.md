@@ -46,17 +46,18 @@ loop:
   - [x] Crates
   - [x] Consoles
   - Chairs
-- People walking around
+- [ ] People walking around
 - [x] Draw the walls on the outside instead so that rooms tiles are easier
   - [x] Need to invert the tile algorithm
 - [ ] Suggestion from H: greenhouses!
 
 - Salvaging from wrecks
   - Attach to your ship and tow them?
-  
   - Go for EVA's and explore randomly generated wrecks
-  
   - First episode of firefly
+  
+- Holes in hull
+- Can launch off the edge of a hole and glide to the other side
   
 - Inspiration games
   - Captain forever

@@ -1,7 +1,7 @@
 local Vector = require "vector"
 local geometry = require "geometry"
 
-local room_gen = require "room_gen"
+local Ship = require("ship").Ship
 
 local TileGrid = geometry.TileGrid
 local Geometry = geometry.GeometryView
@@ -16,13 +16,11 @@ function love.load(arg)
   DEBUG = {
     seed = true,
     mouse_pos = true,
-    cur_room = true
   }
   
   love.graphics.setDefaultFilter("nearest", "nearest")
   WINDOW_WIDTH = 1024
   WINDOW_HEIGHT = 700
-  love.window.setMode(WINDOW_WIDTH, WINDOW_HEIGHT)
   
   hullTileAtlas = love.graphics.newImage("tileset_inv.png")
   wallTileAtlas = love.graphics.newImage("room_0px.png")
@@ -65,12 +63,6 @@ function love.load(arg)
     {quad = love.graphics.newQuad(24,0,16,9,propAtlas:getDimensions()), rotate=true, rooms={[5]=true}, frequency=10}
   }
   
-  hullSpriteBatch = love.graphics.newSpriteBatch(hullTileAtlas, 100)
-  wallSpriteBatch = love.graphics.newSpriteBatch(wallTileAtlas, 100)
-  roomChromeSpriteBatch = love.graphics.newSpriteBatch(gridTileset, 100)
-  greebleSpriteBatch = love.graphics.newSpriteBatch(greebleAtlas, 100)
-  propSpriteBatch = love.graphics.newSpriteBatch(propAtlas, 100)
-  
   stardir = Vector(-1, 0.01)
 
   stars = {}
@@ -81,6 +73,13 @@ function love.load(arg)
   
   -- janky first generation
   love.keypressed("space")
+end
+
+function love.resize(w,h)
+  stars = {}
+  for i = 1, 200 do
+    stars[i] = Vector(love.math.random(1,w), love.math.random(1,h))
+  end
 end
 
 function index2xy(index, width)
@@ -101,12 +100,12 @@ room_types = {
   {name = "Helm",               wrange={2,2}, hrange={2,2}, colour = {0.8,0.9,0.1,0.85}},
   {name = "Engine",             wrange={2,2}, hrange={2,3}, colour={0.58330589736158589, 0.024793900080875231, 0.83640388831262813}},
   -----------------------------  ROOM_PRESELECTED_OFFSET
-  {name = "Storage Bay",        wrange={3,6}, hrange={3,6}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504}},
+  {name = "Storage Bay",        wrange={3,9}, hrange={3,9}, colour={0.82675021090650347, 0.1807523156814923, 0.25548658234132504}},
   {name = "Mess Hall",          wrange = {2,3}, hrange={2,3}, colour = {0.3540978676870179, 0.47236376329459961, 0.67900487187065317}},
-  {name = "Sleeping quarters",  wrange = {1,2}, hrange={1,2}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407}},
-  {name = "Lounge",             wrange = {2,3}, hrange={2,3}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767}},
-  {name = "Corridor",         wrange={2,10}, hrange={1,2}, colour = {0.3,0.3,0.3}},
-  {name = "Corridor",         wrange={1,2}, hrange={2,10}, colour = {0.3,0.3,0.3}},
+  {name = "Sleeping quarters",  wrange = {1,2}, hrange={2,5}, colour = {0.57514179487402095, 0.79693061238668306, 0.45174307459403407}},
+  {name = "Lounge",             wrange = {2,6}, hrange={2,6}, colour = {0.049609465521796903, 0.82957781845624967, 0.62650828993078767}},
+  {name = "Corridor",         wrange={2,7}, hrange={1,2}, colour = {0.3,0.3,0.3}},
+  {name = "Corridor",         wrange={1,2}, hrange={2,7}, colour = {0.3,0.3,0.3}},
 }
 
 local maxw,maxh = 0,0
@@ -115,7 +114,7 @@ for i = 1,#room_types do
   maxh = math.max(maxh, room_types[i].hrange[2])
 end
 
-GRID_SIZE = Vector(maxw,maxh)
+MAX_ROOM_SIZE = Vector(maxw,maxh)
 
 -- Returns 2 vectors for the start and end of the adjacency
 function adjacency(obj1, obj2)
@@ -172,130 +171,36 @@ function print_adj()
   end
 end
 
-function generate(seed)  
-  -- THE GRID
-  --
-  -- A DIGITAL FRONTIER
-  grid = {}
+function new_room(type, random)
+  local template = room_types[type]
+  local room = {type=type}
   
-  seed = seed or os.time()
-  
-  local random = love.math.newRandomGenerator(seed)
-  
-  local width,height = random:random(1, 4), random:random(2, 4)
-  
-  function gen_room(type)
-    local template = room_types[type]
-    local room = {type=type}
-    
-    local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
-    room.size = size
-    room.colour = template.colour
-    room.name = template.name
-    local geometry = {}
-    for i = 1, size.x do
-      geometry[i] = {}
-      for j = 1, size.y do
-        geometry[i][j] = type
-      end
-    end
-    room.geometry = Geometry:new(geometry)
-    return room
+  local size = Vector(random:random(unpack(template.wrange)), random:random(unpack(template.hrange)))
+  if random:random() > 0.5 then
+    size.x, size.y = size.y, size.x
   end
-  
-  rooms = {}
-  
-  -- Generate one of each of the "required" rooms
-  for i = 1, REQUIRED_ROOM_TYPE_OFFSET-1 do
-    local index
-    repeat
-      index = random:random(width*height)
-    until rooms[index] == nil
-    rooms[index] = gen_room(i)
-  end
-  
-  -- Fill the remaining space with other room types
-  for i = 1,width*height do
-    if not rooms[i] then
-      rooms[i] = gen_room(random:random(REQUIRED_ROOM_TYPE_OFFSET,#room_types))
+  room.size = size
+  room.colour = template.colour
+  room.name = template.name
+  local geometry = {}
+  for i = 1, size.x do
+    geometry[i] = {}
+    for j = 1, size.y do
+      geometry[i][j] = type
     end
   end
-  
-  -- Fill the grid
-  -- TODO: A better way of spatial partitioning here?
-  for y = 1,height do
-    grid[y] = {}
-    for x = 1,width do
-      grid[y][x] = rooms[xy2index(x,y,width)]
-    end
-  end
-  
-  -- Generate positions within each grid tile
-  -- midx,midy are used to ensure alignment so that grids can collide
-  local midx = math.floor(GRID_SIZE.x / 2)
-  local midy = math.floor(GRID_SIZE.y / 2)
-  for y = 1,#grid do
-    for x = 1, #grid[1] do
-      local room = grid[y][x]
-      -- This doesn't actually matter because they're getting crammed together anyway...
-      local xoff = random:random(math.max(0, midy-room.size.x), math.min(midx - 1, GRID_SIZE.x-room.size.x))
-      local yoff = random:random(math.max(0, midy-room.size.y), math.min(midy - 1, GRID_SIZE.y-room.size.y))
-      room.pos = Vector(x*GRID_SIZE.x + xoff, y*GRID_SIZE.y + yoff)
-      
-      room.colour = room.colour or {random:random(), random:random(), random:random()}
-    end
-  end
-  
-  -- Slam the rects together
+  room.geometry = Geometry:new(geometry)
+  return room
+end
 
-  for y = 1,#grid do
-    compress(grid[y], "x")
-  end
-
-  for y = 1,#grid-1 do 
-    merge(grid[y],grid[y+1],"y")
-  end
+function roomAdjacency(rooms, random)
+  -- 2D array storing the adjacency matrix for each room in the ship
+  -- nil = no adjacency, a door object = linked by said door object
+  local adjmatrix = {}
   
-  -- Update room positions to be relative to the new bounding box
-  local tl,br
-
-  for i = 1,#rooms do
-    if rooms[i] then
-      local current = rooms[i].pos
-      if tl then
-        if current.x < tl.x then
-          tl.x = current.x
-        end
-        if current.y < tl.y then
-          tl.y = current.y
-        end
-      else
-        tl = current:clone()
-      end
-      if br then
-        if current.x + rooms[i].size.x > br.x then
-          br.x = current.x + rooms[i].size.x 
-        end
-        
-        if current.y + rooms[i].size.y > br.y then
-          br.y = current.y + rooms[i].size.y
-        end
-      else
-        br = current + rooms[i].size
-      end
-    end
-  end
+  -- The list of room id's to merge together
+  local to_merge = {}
   
-  tl = tl - Vector(1,1)
-  
-  for i = 1, #rooms do
-    rooms[i].pos = rooms[i].pos - tl
-  end
-  
-  adjmatrix = {}
-  to_merge = {}
-  
-  -- Door generation
   for i = 1,#rooms do
     if not adjmatrix[i] then
       adjmatrix[i] = {}
@@ -322,6 +227,13 @@ function generate(seed)
               door.vec1 = Vector(random:random(vec1.x, vec2.x-1), vec1.y)
               door.vec2 = door.vec1 + Vector(1,0)
             end
+
+            local upperLeft = door.vec1:min(door.vec2)
+            local bottomRight = door.vec1:max(door.vec2)
+
+            door.vec1 = upperLeft
+            door.vec2 = bottomRight
+
             adjmatrix[i][j] = door
           end
         end
@@ -329,15 +241,10 @@ function generate(seed)
     end
   end
   
-  -- FIXME: For debugging
-  rects = {}
-  
-  for i = 1, #rooms do
-    rects[#rects+1] = {rooms[i].pos:clone(), rooms[i].size:clone()}
-  end
-  
-  -- NOW LEAVING THE GRID
-  
+  return adjmatrix, to_merge
+end
+
+function mergeRooms(rooms, to_merge, adjmatrix)
   for _, merge_pair in ipairs(to_merge) do
     local i, j = unpack(merge_pair)
     if i ~= j then
@@ -396,180 +303,365 @@ function generate(seed)
       adjmatrix[j][i] = adjmatrix[j][i] or adjmatrix[i][j]
     end
   end
+end
+
+function genRoomsByCrunching(random)
+  -- THE GRID
+  --
+  -- A DIGITAL FRONTIER
+  local grid = {}
+  local width,height = random:random(10,20), random:random(10, 20)
   
-  shipGeometry = TileGrid:new()
+  local rooms = {}
   
-  for id, room in ipairs(rooms) do
---    room.id = id
-    local size = room.geometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        if room.geometry:get(x, y) then
-          shipGeometry:set(x+room.pos.x, y+room.pos.y, id)
-        end
-      end
+  -- Generate one of each of the "required" rooms
+  for i = 1, REQUIRED_ROOM_TYPE_OFFSET-1 do
+    local index
+    repeat
+      index = random:random(width*height)
+    until rooms[index] == nil
+    rooms[index] = new_room(i, random)
+  end
+  
+  -- Fill the remaining space with other room types
+  for i = 1,width*height do
+    if not rooms[i] then
+      rooms[i] = new_room(random:random(REQUIRED_ROOM_TYPE_OFFSET,#room_types), random)
     end
   end
-    
-  -- Drawing to spritebatches
-  ----------------------------
+  
+  -- Fill the grid
+  -- TODO: A better way of spatial partitioning here?
+  for y = 1,height do
+    grid[y] = {}
+    for x = 1,width do
+      grid[y][x] = rooms[xy2index(x,y,width)]
+    end
+  end
+  
+  -- Generate positions within each grid tile
+  -- midx,midy are used to ensure alignment so that grids can collide
+  local midx = math.floor(MAX_ROOM_SIZE.x / 2)
+  local midy = math.floor(MAX_ROOM_SIZE.y / 2)
+  for y = 1,#grid do
+    for x = 1, #grid[1] do
+      local room = grid[y][x]
+      -- This doesn't actually matter because they're getting crammed together anyway...
+      local xoff = random:random(math.max(0, midy-room.size.x), math.min(midx - 1, MAX_ROOM_SIZE.x-room.size.x))
+      local yoff = random:random(math.max(0, midy-room.size.y), math.min(midy - 1, MAX_ROOM_SIZE.y-room.size.y))
+      room.pos = Vector(x*MAX_ROOM_SIZE.x + xoff, y*MAX_ROOM_SIZE.y + yoff)
+      
+      room.colour = room.colour or {random:random(), random:random(), random:random()}
+    end
+  end
+  
+  -- Slam the rects together
 
-  hullSpriteBatch:clear()
-  greebleSpriteBatch:clear()
-  roomChromeSpriteBatch:clear()
-  wallSpriteBatch:clear()
-  propSpriteBatch:clear()
+  for y = 1,#grid do
+    compress(grid[y], "x")
+  end
+
+  for y = 1,#grid-1 do 
+    merge(grid[y],grid[y+1],"y")
+  end
   
-  -- TODO: Center greebles that are < TILE_WIDTH wide
-  -- Greebles
+  return rooms
+end
+
+function genRoomsByTetris(random)
+  local initialWidth, numRooms = random:random(1,1), random:random(10,20)
   
-  -- Add an offset of 1 to generate hull sprites outside of the limits
-  local size = shipGeometry:size() + Vector(1,1)
-  local hullWidth = 2
-  for x = 1,size.x+1 do
-    for y = 1,size.y+1 do
-      if not shipGeometry:get(x,y) then
-        --empty space for greebles
-        if random:random() > 0.2 then
-          local quad = greebleQuads[random:random(#greebleQuads)]
-          local _,_,quadWidth,quadHeight = quad:getViewport()
-          if shipGeometry:get(x+1,y) then
-            -- Pointing left
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH)-hullWidth, (y-1)*TILE_WIDTH+quadWidth, -math.pi/2, 1, 1, 0, 0)
-          elseif shipGeometry:get(x-1,y) then
-            -- Pointing right
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadHeight+hullWidth, (y-1)*TILE_WIDTH, math.pi/2, 1, 1, 0, 0)
-          elseif shipGeometry:get(x,y+1) then
-            -- Pointing up
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH-(quadHeight-TILE_WIDTH)+hullWidth, 0, 1, 1, 0, 0)
-          elseif shipGeometry:get(x,y-1) then
-            -- Pointing down
-            greebleSpriteBatch:add(quad, (x-1)*TILE_WIDTH+quadWidth, (y-1)*TILE_WIDTH+quadHeight-hullWidth, math.pi, 1, 1, 0, 0)
+  local row = {}
+  
+  local rooms = {}
+  
+  -- midx,midy are used to ensure alignment so that grids can collide
+  local midx = math.floor(MAX_ROOM_SIZE.x / 2)
+  local midy = math.floor(MAX_ROOM_SIZE.y / 2)
+  
+  local collisionView = Geometry:new()
+  
+  -- Generate a row of rooms to start with
+  local xOffset = 1
+  local lowestY = 1
+  for i = 1, initialWidth do
+    local room = new_room(random:random(1, #room_types), random)
+    
+    
+    local randY = random:random(math.max(1, midy-room.size.y), math.min(midy - 1, MAX_ROOM_SIZE.y-room.size.y))
+    lowestY = math.max(lowestY, randY)
+    room.pos = Vector(xOffset, randY)
+    
+    --Offset the rooms
+    xOffset = xOffset + room.size.x
+    
+    row[i] = room
+    rooms[i] = room
+    
+    collisionView:add(room.geometry, room.pos)
+  end
+  
+  function calcSurfaceArea(x,y,width, height)
+    local sum = 0
+    for checkY = y-1, y+height do
+      for checkX = x+width, x-1, -1 do
+        if (checkX < x) or (checkX >= x+width) or (checkY < y) or (checkY >= y+height) then
+          if collisionView:get(checkX, checkY) then
+            sum = sum + 1
+          end
+        else 
+          if collisionView:get(checkX, checkY) then
+            --collision!
+            return -1, checkX, checkY
           end
         end
-      else
-        --tilesetSpriteBatch:add(tileQuads[1], x*16, y*16)
       end
     end
+    
+    return sum
   end
   
-  invGeometry = {
-    get = function(self, x,y)
-      return not shipGeometry:get(x,y)
-    end
-  }
-  setmetatable(invGeometry, {__index=shipGeometry})
-  
-  floorQuad = love.graphics.newQuad(80,122,16,16,96,128)
-  -- Walls
-  for x = 1, size.x do
-    for y = 1, size.y do
-      if invGeometry:get(x,y) then 
-        local quad = tileset:getQuad(invGeometry,x,y)
-        if quad then
-          hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)   
+  for i = 1, numRooms do
+    local room = new_room(random:random(1, #room_types), random)
+    local shipSize = collisionView:size()
+    local initialX = random:random(1, shipSize.x)
+    local x = initialX
+    local bestSurfaceArea = 0
+    local bestPos = Vector(x,shipSize.y+10)
+    local skipTo = 0
+    -- Start from a random X coordinate and iterate mod gridwidth
+    for x = initialX, initialX + shipSize.x do
+      if x >= skipTo then
+        local modX = x % (shipSize.x) + 1
+        for y = shipSize.y+1, 1, -1 do
+          local surfaceArea, checkX, checkY = calcSurfaceArea(modX,y,room.size:unpack())
+          -- This check is absolutely crucial
+          --
+          -- Are we trying to tetris, or are we trying to squeeze rooms in as tight as possible?
+          -- If trying to squeeze them in as tight as possible then omit this check
+          -- This is also means we need to to full collision checks, not just the front edge
+          if surfaceArea == -1 then
+            skipTo = checkX
+            break
+          end
+          -- 
+          if surfaceArea > bestSurfaceArea then
+            bestPos = Vector(modX,y)
+            bestSurfaceArea = surfaceArea
+          end
         end
-      else
-        local quad = floorQuad
-        hullSpriteBatch:add(quad, (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH)
       end
+    end
+    room.pos = bestPos - Vector(1,1)
+    rooms[#rooms+1]=room
+    collisionView:add(room.geometry, room.pos)
+  end
+  
+  return rooms
+end
+
+
+
+function genRoomsBy4DTetris(random)
+  local rooms = {}
+  
+  local collisionView = Geometry:new()
+  
+  local left = {len=0,start=0}
+  local right = {len=0,start=0}
+  local top = {len=0,start=0}
+  local bot = {len=0,start=0}
+  
+  local bounds = {
+    left = left,
+    right = right,
+    top = top,
+    bot = bot
+  }
+  
+  local collisionOffset = Vector(-1,-1)
+  local function calcSurfaceArea(x,y,width, height)
+    x = x - collisionOffset.x
+    y = y - collisionOffset.y
+    local sum = 0
+    
+    for checkY = y-1, y+height do
+      if collisionView:get(x-1, checkY) then
+        sum = sum + 1
+      end
+      if collisionView:get(x+width, checkY) then
+        sum = sum + 1
+      end
+    end
+    
+    for checkX = x, x+width-1 do
+      if collisionView:get(checkX, y-1) then
+        sum = sum + 1
+      end
+      if collisionView:get(checkX, y+width) then
+        sum = sum + 1
+      end
+    end
+    
+    return sum
+  end
+  
+  local function addToBounds(tbl, idx, val, min_max)
+    if not tbl[idx] then
+      tbl[idx] = val
+      tbl.len = tbl.len + 1
+      if idx < tbl.start then
+        tbl.start = idx
+      end
+    else
+      tbl[idx] = math[min_max](tbl[idx], val)
     end
   end
   
-  -- Rooms
-  for i = 1,#rooms do
-    local room = rooms[i]
-    if room then
-      roomChromeSpriteBatch:setColor(room.colour[1], room.colour[2], room.colour[3], 0.5)
-      wallSpriteBatch:setColor(0.3, 0.3, 0.3)
-      local size = room.geometry:size()
-      for x = 1, size.x do
-        for y = 1, size.y do
-          if room.geometry:get(x,y) then 
-            local quad = tileset:getQuad(room.geometry,x,y)
-            if quad then
-              roomChromeSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
-              wallSpriteBatch:add(quad, (room.pos.x+x-1)*TILE_WIDTH, (room.pos.y+y-1)*TILE_WIDTH)
+  local function addRoom(room, pos)
+    if not pos then
+      print("uh oh")
+    end
+    room.pos = pos
+    for x = room.pos.x, room.pos.x + room.size.x - 1 do
+      addToBounds(top, x, room.pos.y, "min")
+      addToBounds(bot, x, room.pos.y + room.size.y, "max")
+    end
+    
+    for y = room.pos.y, room.pos.y + room.size.y - 1 do
+      addToBounds(left, y, room.pos.x, "min")
+      addToBounds(right, y, room.pos.x + room.size.x, "max")
+    end
+    
+    rooms[#rooms+1] = room
+    collisionOffset = collisionOffset + collisionView:add(room.geometry, room.pos)
+  end
+  
+  local num_rooms = random:random(20,50)
+  local seedRoom = new_room(random:random(1, #room_types), random)
+  seedRoom.generator_metadata = {
+    }
+  addRoom(seedRoom, Vector())
+  
+  local skipped = 0
+  for i = 1, num_rooms do
+    local room = new_room(random:random(1, #room_types), random)
+    
+    local dirIndex = random:random(1,4)
+    
+    if i < num_rooms * (3/4) then
+      dirIndex = random:random(1,2)
+    else
+      dirIndex = random:random(3,4)
+    end
+    
+    local direction = ({"left", "right", "top", "bot"})[dirIndex]
+    local xy = ({"y", "y", "x", "x"})[dirIndex]
+    local obstacleSign = ({1,-1,1,-1})[dirIndex]
+    local posOffset = ({Vector(-room.size.x, 0), Vector(), Vector(0, -room.size.y), Vector()})[dirIndex]
+    
+    local pos
+    
+    local skipTo = 0
+    local bound = bounds[direction]
+    local storeX
+    local randomOffset = random:random(bound.start, bound.start + bound.len - 1)
+    
+    local bestArea, bestPos
+    bestArea = 0
+    
+    for x = 0, bound.len do
+      x = ((x + randomOffset) % bound.len) + bound.start
+      storeX = x
+      if true or x >= skipTo then
+        local placementWorks = true
+        for check = x, x+room.size[xy]-1 do
+          -- Calculates the directional shift between two edges of the wall
+          -- A negative shift implies an outcropping == an obstacle in the way of trying to nestle
+          -- this room into a gap in the wall.
+          if not bound[x] then
+            print()
+          end
+          if obstacleSign * ((bound[check] or 0) - bound[x]) < 0 then
+            -- The gap isn't big enough to contain this room!
+            --skipTo = check
+            if skipTo == bound.start + bound.len - 1 then
+              print()
+            end
+            placementWorks = false
+            break
+          end
+        end
+
+        if placementWorks then
+          local pos
+          if dirIndex < 3 then
+            pos = Vector(bound[x], x)
+          else
+            pos = Vector(x, bound[x])
+          end
+          pos = pos + posOffset
+          local surface = calcSurfaceArea(pos.x, pos.y, room.size.x, room.size.y)
+          if surface > 0 then
+            if surface > bestArea then
+              bestArea = surface
+              bestPos = pos
             end
           end
         end
       end
     end
-  end
-  
-  for i = 1, #rooms do
-    local room = rooms[i]
-    
-    local size = room.geometry:size()
-    
-    props = room_gen.generate(room)
-    
-    for i = 1, #props do
-      local prop = props[i]
-      local position = prop.position
-      position = position + room.pos - Vector(1,1)
-      
-      position = position * TILE_WIDTH
-      
-      position = position + prop.offset
-      
-      propSpriteBatch:add(prop.quad, position.x, position.y, prop.angle, 1, 1)
+    if not bestPos then
+    end
+    if bestPos then
+      room.generator_metadata = {
+        direction = direction,
+        bestArea = bestArea
+      }
+      addRoom(room, bestPos)
+    else
+      skipped = skipped + 1
     end
   end
+  print("skipped "..tostring(skipped).." rooms")
+  return rooms
+end
+
+function generate(seed)
+  ships = {}
+  for i = 1, 20 do
+    local ship = Ship:new(seed)
   
-    -- TODO: This should be part of ship generation, not calculated every frame
-  local tl,br
-  
-  for i = 1,#rooms do
-    if rooms[i] then
-      local current = rooms[i].pos
-      if tl then
-        if current.x < tl.x then
-          tl.x = current.x
-        end
-        if current.y < tl.y then
-          tl.y = current.y
-        end
-      else
-        tl = current:clone()
-      end
-      if br then
-        if current.x + rooms[i].size.x > br.x then
-          br.x = current.x + rooms[i].size.x 
-        end
-        
-        if current.y + rooms[i].size.y > br.y then
-          br.y = current.y + rooms[i].size.y
-        end
-      else
-        br = current + rooms[i].size
-      end
-    end
+    ship:generate()
+    
+    ship.pos = Vector(love.math.random(-1000, 1000), love.math.random(-1000, 1000))
+    ship.vel = Vector(love.math.random(), love.math.random()) * 70
+    
+    ships[i] = ship
+    
+    seed = seed + 1
   end
   
-  center = tl + (br-tl)/2
-  
+  panOffset = -ships[1].center * TILE_WIDTH
 end
 
 local seed = 1573187721
+local DEBUG_KEYBIND = {
+  
+  r="room_bounds",
+  t="rect_bounds",
+  n="tile_numbers",
+  m="generator_metadata",
+  p="prop_grid",
+  c="cur_room"
+}
+  
 function love.keypressed(key)
   if key == "space" then
     generate(seed)
     seed = seed + 1
-  elseif key == "r" then
-    DEBUG.room_bounds = not DEBUG.room_bounds
-  elseif key == "t" then
-    DEBUG.rect_bounds = not DEBUG.rect_bounds
-  elseif key == "n" then
-    DEBUG.tile_numbers = not DEBUG.tile_numbers
-  elseif key == "p" then
-    DEBUG.prop_grid = not DEBUG.prop_grid
---  elseif key == "=" then
---    viewScale = viewScale + 0.2
---  elseif key == "-" then
-    viewScale = viewScale - 0.2
-  elseif key == "a" then
-    print_adj()
+  elseif DEBUG_KEYBIND[key] then
+    DEBUG[DEBUG_KEYBIND[key]] = not DEBUG[DEBUG_KEYBIND[key]]
   end
 end
  
@@ -578,41 +670,71 @@ function overlap(start1,end1,start2,end2)
   return math.max(0, math.min(end1, end2) - math.max(start1, start2))
 end
 
+function minDiff(arr1, arr2, dir, offset)
+  local mindiff
+  local offset = offset or 0
+  local offdir = dir == "x" and "y" or "x"
+  local overlaps = {}
+  for i = 1,#arr1 do
+    local current = arr1[i]
+    local currentPos = current.pos:clone()
+    currentPos[offdir] = currentPos[offdir] + offset
+    for j =1,#arr2 do
+      local opposite = arr2[j]
+      local oppositePos = opposite.pos:clone()
+      oppositePos[offdir] = oppositePos[offdir] + offset
+      local over = overlap(oppositePos[offdir], oppositePos[offdir]+opposite.size[offdir],
+                 currentPos[offdir], currentPos[offdir]+current.size[offdir])
+      local diff
+      if over > 0 then
+        diff = oppositePos[dir] - currentPos[dir] - current.size[dir]        
+      else
+        diff = 100
+      end
+
+      overlaps[diff] = (overlaps[diff] or 0) + over
+      if not mindiff then
+        mindiff = diff
+      else
+        mindiff = math.min(mindiff, diff)
+      end
+    end
+  end
+  return mindiff, overlaps
+end
+
 function merge(arr1, arr2, dir)
   dir = dir or "x"
   local offdir = dir == "x" and "y" or "x"
   
-  local mindiff
-  for i = 1,#arr1 do
-    local current = arr1[i]
+  local bestOffset = 0
+  local bestOverlap = 0
+  local bestDiff = 0
+  for offset = 0, 0 do
+    local mindiff, overlaps = minDiff(arr1, arr2, dir, offset)
     
-    for j =1,#arr2 do
-      local opposite = arr2[j]
-      if overlap(opposite.pos[offdir], opposite.pos[offdir]+opposite.size[offdir],
-                 current.pos[offdir], current.pos[offdir]+current.size[offdir]) > 0 then
-        local diff = opposite.pos[dir] - current.pos[dir] - current.size[dir]
-        if not mindiff then
-          mindiff = diff
-        else
-          mindiff = math.min(mindiff, diff)
-        end
-      end
+    if overlaps[mindiff] or 0 > bestOverlap then
+      bestOffset = offset
+      bestOverlap = overlaps[mindiff]
+      bestDiff = mindiff
     end
   end
   
   for i = 1, #arr2 do
-    arr2[i].pos[dir] = arr2[i].pos[dir] - mindiff
+    arr2[i].pos[dir] = arr2[i].pos[dir] - bestDiff
+    arr2[i].pos[offdir] = arr2[i].pos[offdir] + bestOffset
   end
 end
 
-function compress(arr, dir)
-  for i=1,#arr-1 do
-    merge({arr[i]}, {arr[i+1]}, dir)
-  end
-end
+--function compress(arr, dir)
+--  for i=1,#arr-1 do
+--    merge({arr[i]}, {arr[i+1]}, dir)
+--  end
+--end
 
 function compress(arr, dir)
   dir = dir or "x"
+  -- Start from the middle of the rects to avoid bias to one side or the other
   local middle = math.floor(#arr/2)
   for i = middle,1,-1 do
     local current = arr[i]
@@ -644,10 +766,11 @@ function love.mousepressed(x,y,button)
   local screenSpace = Vector(x,y)
   
   -- Position in ship pixel space
-  local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
-  
+  local shipSpace = screenToShipSpace(screenSpace, ships[1])
+  local adjmatrix = ships[1].adjmatrix
   local door
   local br = false
+  local adjmatrix = ships[1].adjmatrix
   for i = 1, #adjmatrix do
     for j = i, #adjmatrix do
       door = adjmatrix[i][j]
@@ -665,47 +788,70 @@ end
 
 ELAPSED_TIME = 0
 panOffset = Vector()
-PAN_SPEED = 150
-ZOOM_SPEED = 2
+PAN_SPEED = 300
+ENGINE_SPEED = 50
+ZOOM_SPEED = 10
 viewScale = 3
 function love.update(dt)
   ELAPSED_TIME = ELAPSED_TIME + dt
   
   if love.keyboard.isDown("left") then
-    panOffset = panOffset + Vector(1, 0) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(1, 0) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("right") then
-    panOffset = panOffset + Vector(-1, 0) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(-1, 0) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("up") then
-    panOffset = panOffset + Vector(0, 1) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(0, 1) * PAN_SPEED * dt / viewScale
   end
   if love.keyboard.isDown("down") then
-    panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt * viewScale
+    panOffset = panOffset + Vector(0, -1) * PAN_SPEED * dt / viewScale
   end
+  
+  if love.keyboard.isDown("w") then
+    ships[1].vel = ships[1].vel + Vector(0, 1) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("s") then
+    ships[1].vel = ships[1].vel + Vector(0, -1) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("a") then
+    ships[1].vel = ships[1].vel + Vector(1, 0) * ENGINE_SPEED * dt
+  end
+  if love.keyboard.isDown("d") then
+    ships[1].vel = ships[1].vel + Vector(-1, 0) * ENGINE_SPEED * dt
+  end
+  
   if love.keyboard.isDown("=") then
-    viewScale = viewScale + ZOOM_SPEED * dt
+    viewScale = viewScale + (viewScale * ZOOM_SPEED * dt)
   end
   if love.keyboard.isDown("-") then
-    viewScale = viewScale - ZOOM_SPEED * dt
+    viewScale = viewScale - (viewScale * ZOOM_SPEED * dt)
+  end
+  
+  viewScale = math.max(0, viewScale)
+  
+  for i = 1, #ships do
+    ships[i].pos = ships[i].pos + ships[i].vel * dt
   end
 end
 
-STAR_SPEED = 10
+STAR_SPEED = 1/10
 
+function screenToShipSpace(screenSpace, ship)
+    return ((screenSpace - Vector(love.graphics.getWidth()/2, love.graphics.getHeight()/2)) / viewScale) - panOffset
+end
 
 function love.draw()
   love.graphics.setColor(1,1,1)
   for n = 1,3 do
     love.graphics.setPointSize(n)
-    for i = 1, #stars do
+    for i = n, #stars, 3  do
       -- TODO: replace with points(unpack(stars)) and love.translate
       local star = stars[i]
-      local drawstar = star + (stardir * ELAPSED_TIME * n * STAR_SPEED)
-      drawstar = drawstar + Vector(1,1) * n * 12345
-      
-      drawstar.x = drawstar.x % (WINDOW_WIDTH + 20) - 20
-      drawstar.y = drawstar.y % (WINDOW_HEIGHT + 20) - 20
+      local drawstar = star + ships[1].pos * STAR_SPEED * n --(stardir * ELAPSED_TIME * n * STAR_SPEED)
+--      drawstar = drawstar + Vector(1,1) * n
+      drawstar.x = (drawstar.x % (love.graphics.getWidth() + 20)) - 20
+      drawstar.y = (drawstar.y % (love.graphics.getHeight() + 20)) - 20
       
       love.graphics.points(drawstar.x, drawstar.y)
     end
@@ -713,84 +859,24 @@ function love.draw()
   
   love.graphics.push()
   love.graphics.setPointSize(3)
-
-  viewOffset = Vector(love.graphics.getWidth(), love.graphics.getHeight())/2 - (center * TILE_WIDTH * viewScale)
-  viewOffset = viewOffset + panOffset
-  love.graphics.translate(viewOffset.x, viewOffset.y)
+  
+  local viewOffset = ships[1].pos + panOffset
+  
+  love.graphics.translate(love.graphics.getWidth()/2, love.graphics.getHeight()/2)
+  
   love.graphics.scale(viewScale)
   
-  love.graphics.setColor(1,1,1)
-  
-  love.graphics.draw(greebleSpriteBatch)
-  
-  love.graphics.draw(hullSpriteBatch)
-  love.graphics.draw(roomChromeSpriteBatch)
-  love.graphics.draw(wallSpriteBatch)
-  love.graphics.draw(propSpriteBatch)
-  
-  for i = 1, #rooms do
-    for j = i, #rooms do
-      local door = adjmatrix[i][j]
-      if door then
-        local vec1, vec2 = door.vec1, door.vec2
-        local upperLeft = vec1:min(vec2)
-        local bottomRight = vec1:max(vec2)
-        local drawPos = upperLeft*TILE_WIDTH
-        if vec1.x == vec2.x then
-          r = math.pi/2
-          drawPos = drawPos + Vector(1,0)
-        else
-          r = 0
-          drawPos = drawPos + Vector(0,-1)
-        end
-        
-        love.graphics.draw(door.open and door_open or door_closed, drawPos.x, drawPos.y, r)
-        --love.graphics.line(door.vec1.x*TILE_WIDTH,door.vec1.y*TILE_WIDTH,door.vec2.x*TILE_WIDTH,door.vec2.y*TILE_WIDTH)
-      end
-    end
-  end
-  
-  if DEBUG.rect_bounds then
-    love.graphics.setColor(1,0,0)
-    for i = 1,#rects do
-      local rect = rects[i]
-      love.graphics.rectangle("line", rect[1].x*TILE_WIDTH, rect[1].y*TILE_WIDTH, rect[2].x*TILE_WIDTH, rect[2].y*TILE_WIDTH)
-    end
-  end
-  
-  if DEBUG.room_bounds then
-    for i = 1,#rooms do
-      local room = rooms[i]
-      love.graphics.setColor(room.colour)
-      love.graphics.rectangle("line", room.pos.x*TILE_WIDTH, room.pos.y*TILE_WIDTH, (room.geometry:size()*TILE_WIDTH):unpack())
-    end
-  end
-  
-  if DEBUG.prop_grid then
-    love.graphics.setColor(1,1,1,0.3)
-    local size = shipGeometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        if propgeometry:get(x,y) then
-          love.graphics.rectangle("fill", (x-1)*TILE_WIDTH, (y-1)*TILE_WIDTH, TILE_WIDTH, TILE_WIDTH)
-        end
-      end
-    end
-  end
-  
-  love.graphics.pop()
-
-  love.graphics.push()
   love.graphics.translate(viewOffset.x, viewOffset.y)
-  if DEBUG.tile_numbers then
-    local size = invGeometry:size()
-    for x = 1, size.x do
-      for y = 1, size.y do
-        local number = tileset:getTileIndex(invGeometry, x, y)
-        love.graphics.print(number, (x-1)*viewScale*TILE_WIDTH, (y-1)*viewScale*TILE_WIDTH)
-      end
-    end
+  
+  for i = math.floor(#ships/2), math.floor(#ships/2)+#ships do
+    i = (i % #ships) + 1
+    local ship = ships[i]
+    love.graphics.push()
+    love.graphics.translate((-ship.pos):unpack())
+    ship:draw()
+    love.graphics.pop()
   end
+
   love.graphics.pop()
   
   if DEBUG.seed then
@@ -800,15 +886,15 @@ function love.draw()
   
   if DEBUG.mouse_pos then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
+    local shipSpace = screenToShipSpace(screenSpace, ships[1])
     love.graphics.setColor(1,1,1)
-    love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace))
+    love.graphics.print("screenSpace = "..tostring(screenSpace)..", shipSpace = "..tostring(shipSpace)..", panOffset = "..tostring(panOffset))
   end
   
   if DEBUG.cur_room then
     local screenSpace = Vector(love.mouse.getX(), love.mouse.getY())
-    local shipSpace = (screenSpace / viewScale) - (viewOffset / (viewScale))
-    local id = shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
+    local shipSpace = screenToShipSpace(screenSpace, ships[1])
+    local id = ships[1].shipGeometry:get((shipSpace/TILE_WIDTH):ceil())
     love.graphics.setColor(1,1,1)
     love.graphics.print("curRoom = "..tostring(id), 0, 20)
   end
