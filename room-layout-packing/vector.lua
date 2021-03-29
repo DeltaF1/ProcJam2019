@@ -213,9 +213,19 @@ function vector:max(v)
   return new(math.max(self.x, v.x), math.max(self.y, v.y))
 end
 
+function vector:min(v)
+  assert(isvector(v))
+  return new(math.min(self.x, v.x), math.min(self.y, v.y))
+end
+
 function vector:floor()
   return new(math.floor(self.x), math.floor(self.y))
 end
+
+function vector:ceil()
+  return new(math.ceil(self.x), math.ceil(self.y))
+end
+
 
 -- the module
 return setmetatable({
