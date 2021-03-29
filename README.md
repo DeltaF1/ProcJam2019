@@ -16,7 +16,8 @@ To complement the new interior aesthetic, ornamental "greebles" such as antennae
 ![tileset](tileset_editor.gif)
 ![greebles](greeblies.gif)
 
-Finally, I added props to the insides of the rooms. Furniture such as crates, is chosen
+Finally, I added props to the insides of the rooms. Pieces of furniture such as crates or beds are chosen based on the room's purpose.
+
 
 ## [Cellular Automata](cellular)
 _Implementation of conway's game of life_
